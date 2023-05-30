@@ -4,13 +4,13 @@ Rust bindings for CUDA point cloud processing with NVIDIA cuPCL.
 
 ** This is a work in progress. **
 
-[ ] Voxel Downsample (libcudafilter.so) - See [#39](https://github.com/NVIDIA-AI-IOT/cuPCL/issues/39)
-[x] Passthrough (own implementation)
-[x] Clustering (libcudacluster.so)
-[ ] ICP
-[ ] NDT
-[ ] Octree
-[ ] Segmentation
+- [ ] Voxel Downsample (libcudafilter.so) - See [#39](https://github.com/NVIDIA-AI-IOT/cuPCL/issues/39)
+- [x] Passthrough (own implementation)
+- [x] Clustering (libcudacluster.so)
+- [ ] ICP
+- [ ] NDT
+- [ ] Octree
+- [ ] Segmentation
 
 # Setup
 

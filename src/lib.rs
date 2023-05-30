@@ -8,10 +8,10 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Point {
-    x: f32,
-    y: f32,
-    z: f32,
-    i: f32, // intensity or padding byte
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub i: f32, // intensity or padding byte
 }
 
 impl Point {

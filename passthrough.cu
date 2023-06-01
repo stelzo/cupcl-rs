@@ -3,6 +3,7 @@
 #include <cassert>
 #include <stdint.h>
 #include "math_utils.cuh"
+#include <cmath>
 
 typedef enum {
     PASSTHROUGH = 0,
@@ -60,7 +61,7 @@ bool inside_box(float3 p, float3 min, float3 max)
 }
 
 __forceinline__ __device__
-bool inside_vertical_fov(float3 p, float fov_right, float fov_left, float2 forward)
+bool inside_horizontal_fov(float3 p, float fov_right, float fov_left, float2 forward)
 {
     float angle = angle2d(forward, make_float2(p.x, p.y));
     float fov_angle = safe_angle(fov_right - fov_left);
@@ -118,7 +119,7 @@ void krnl_passthrough_filter(
     float fov_right,
     float fov_left,
     float2 forward,
-    bool invert_vertical_fov,
+    bool enable_horizontal_fov,
     float2* polygon,
     int polygon_size,
     bool invert_polygon)
@@ -135,14 +136,13 @@ void krnl_passthrough_filter(
     bool is_inside_box = inside_box(p_t, min, max);
     if (invert_bounding_box) is_inside_box = !is_inside_box;
 
-    bool is_inside_fov = inside_vertical_fov(p_t, fov_right, fov_left, forward);
-    if (invert_vertical_fov) is_inside_fov = !is_inside_fov;
+    bool is_inside_fov = inside_horizontal_fov(p_t, fov_right, fov_left, forward);
 
     bool is_inside_polygon = point_inside_polygon_winding_number(p_t, polygon, polygon_size);
     if (invert_polygon) is_inside_polygon = !is_inside_polygon;
 
     // compute as much as possible before branching or atomicAdd so the kernels run in simd
-    if (!is_inside_range || !is_inside_box || !is_inside_fov && (polygon_size != 0 && !is_inside_polygon))
+    if (!is_inside_range || !is_inside_box || (enable_horizontal_fov && !is_inside_fov) || (polygon_size != 0 && !is_inside_polygon))
         return;
 
     uint32_t idx_filtered = atomicAdd(num_points_filtered, 1);
@@ -182,7 +182,7 @@ void cupcl_passthrough_filter(
     float fov_left,
     float forward_x,
     float forward_y,
-    bool invert_vertical_fov,
+    bool enable_horizontal_fov,
     float* polygon,
     int polygon_size,
     bool invert_polygon)
@@ -204,10 +204,10 @@ krnl_passthrough_filter<<<BLOCKS, THREADS_PER_BLOCK, 0, s>>>(
     num_points_filtered,
     make_float4(rotation_x, rotation_y, rotation_z, rotation_w),
     make_float3(translation_x, translation_y, translation_z),
-    fov_right,
-    fov_left,
+    safe_angle(fov_right),
+    safe_angle(fov_left),
     make_float2(forward_x, forward_y),
-    invert_vertical_fov,
+    enable_horizontal_fov,
     (float2*)polygon,
     polygon_size,
     invert_polygon

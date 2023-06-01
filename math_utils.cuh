@@ -1,4 +1,5 @@
 #include <cuda_runtime.h>
+#include <cmath>
 
 __forceinline__ __device__
 float4 add_float4(float4 a, float4 b)
@@ -6,11 +7,11 @@ float4 add_float4(float4 a, float4 b)
     return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
 }
 
-__forceinline__ __device__
+__forceinline__ __device__ __host__
 float safe_angle(float angle)
 {
-    const int factor = floor(angle / (2.0f * 3.14159265358979323846f));
-    return angle - factor * 2.0f * 3.14159265358979323846f;
+    const int factor = floor(angle / (2.0f * M_PI));
+    return angle - factor * 2.0f * M_PI;
 }
 
 __forceinline__ __device__

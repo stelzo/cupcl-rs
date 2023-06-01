@@ -242,7 +242,7 @@ pub struct PassthroughFilterParameters {
     pub fov_right: f32,
     pub fov_left: f32,
     pub forward: (f32, f32),
-    pub invert_vertical_fov: bool,
+    pub enable_horizontal_fov: bool,
     pub polygon: Option<CudaBuffer>,
     pub invert_polygon: bool,
 }
@@ -258,10 +258,10 @@ impl Default for PassthroughFilterParameters {
             invert_distance: false,
             rotation: (0.0, 0.0, 0.0, 1.0),
             translation: (0.0, 0.0, 0.0),
-            fov_right: 180.0,
-            fov_left: -179.9999999,
+            fov_right: 0.0,
+            fov_left: 0.0,
             forward: (1.0, 0.0),
-            invert_vertical_fov: false,
+            enable_horizontal_fov: false,
             polygon: None,
             invert_polygon: false,
         }
@@ -319,7 +319,7 @@ pub fn passthrough_filter(
             params.fov_left.to_radians(),
             params.forward.0,
             params.forward.1,
-            params.invert_vertical_fov,
+            params.enable_horizontal_fov,
             params
                 .polygon
                 .as_ref()
@@ -417,22 +417,27 @@ mod tests {
         params.polygon = Some(cuda_polygon);
         let filtered = passthrough_filter(&stream, &cuda_pointcloud.buffer, &params);
         assert_eq!(filtered.buffer.n, 3);
+    }
 
-        /*let cuda_pointcloud = CudaPointCloud::from_full_cloud(&stream, vec![
-            Point::new(1.0, 0.0, 0.0, 0.0),
-            Point::new(1.0, 0.5, 0.0, 0.0),
-        ]);
+    #[test]
+    fn fov_passthrough() {
+        let stream = CudaStream::new();
+
+        let cuda_pointcloud = CudaPointCloud::from_full_cloud(
+            &stream,
+            vec![
+                Point::new(1.0, 0.0, 0.0, 0.0),
+                Point::new(-1.0, 0.0, 0.0, 0.0),
+            ],
+        );
         let mut params = PassthroughFilterParameters::default();
-        params.fov_left = 10.0;
-        params.fov_right = -10.0;
+        params.fov_left = 90.0;
+        params.fov_right = 180.0;
+        params.enable_horizontal_fov = true;
         params.forward = (1.0, 0.0);
 
-        let filtered = passthrough_filter(
-            &stream,
-            &cuda_pointcloud.buffer,
-            &params,
-        );
-        assert_eq!(filtered.buffer.n, 1);*/
+        let filtered = passthrough_filter(&stream, &cuda_pointcloud.buffer, &params);
+        assert_eq!(filtered.buffer.n, 1);
     }
 
     fn read_pcl_file(path: String) -> Vec<PCDPoint> {

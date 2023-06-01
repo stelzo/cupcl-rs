@@ -14,6 +14,13 @@ extern "C"
         return buff;
     }
 
+    void cupcl_upload_buffer(void* stream, void* gpu_buffer, void* cpu_buffer, unsigned int element_size, unsigned int n)
+    {
+        cudaStream_t stream_ = (cudaStream_t)stream;
+        cudaMemcpyAsync(gpu_buffer, cpu_buffer, element_size * n, cudaMemcpyHostToDevice, stream_);
+        cudaStreamSynchronize(stream_);
+    }
+
     void *cupcl_create_buffer(void *stream, void *buffer_cpu, unsigned int element_size, unsigned int n)
     {
         cudaStream_t stream_ = (cudaStream_t)stream;

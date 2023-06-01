@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 #include <cassert>
 #include <stdint.h>
+#include "math_utils.cuh"
 
 typedef enum {
     PASSTHROUGH = 0,
@@ -44,6 +45,13 @@ public:
 };
 
 __forceinline__ __device__
+bool inside_range(float3 p, float min_dist, float max_dist)
+{
+    float dist = dot_float3(p, p);
+    return dist >= min_dist * min_dist && dist <= max_dist * max_dist;
+}
+
+__forceinline__ __device__
 bool inside_box(float3 p, float3 min, float3 max)
 {
     return p.x >= min.x && p.x <= max.x &&
@@ -52,11 +60,40 @@ bool inside_box(float3 p, float3 min, float3 max)
 }
 
 __forceinline__ __device__
-bool inside_range(float3 p, float min_dist, float max_dist)
+bool inside_vertical_fov(float3 p, float fov_right, float fov_left, float2 forward)
 {
-    float dist = p.x * p.x + p.y * p.y + p.z * p.z;
-    return dist >= min_dist * min_dist && dist <= max_dist * max_dist;
+    float angle = angle2d(forward, make_float2(p.x, p.y));
+    float fov_angle = safe_angle(fov_right - fov_left);
+    float local_angle = safe_angle(angle - fov_left);
+    return local_angle <= fov_angle;
 }
+
+__forceinline__ __device__
+bool point_inside_polygon_winding_number(float3 p, float2* polygon, int polygon_size)
+{
+    uint8_t winding_number = 0;
+    for (int i = 0; i < polygon_size; i++)
+    {
+        float2 v1 = polygon[i];
+        float2 v2 = polygon[(i + 1) % polygon_size];
+
+        bool cont = (p.y < min(v1.y, v2.y) || p.y > max(v1.y, v2.y)) ||
+                    (p.x > max(v1.x, v2.x)) ||
+                    (v1.y == v2.y);
+
+        if (cont) continue;
+
+        const float y_slope = (v2.x - v1.x) / (v2.y - v1.y);
+        const float x_intercept = (p.y - v1.y) * y_slope + v1.x;
+        if (v1.x == v2.x || p.x <= x_intercept)
+        {
+            winding_number += v2.y - v1.y > 0 ? 1 : -1;
+        }
+    }
+
+    return winding_number != 0;
+}
+
 
 /**
  * Filter out points that are not within the specified range.
@@ -75,28 +112,44 @@ void krnl_passthrough_filter(
     bool invert_bounding_box,
     bool invert_distance,
     float* cloud_filtered,
-    uint32_t* num_points_filtered)
+    uint32_t* num_points_filtered,
+    float4 rotation,
+    float3 translation,
+    float fov_right,
+    float fov_left,
+    float2 forward,
+    bool invert_vertical_fov,
+    float2* polygon,
+    int polygon_size,
+    bool invert_polygon)
 {
     uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_points) return;
 
-    float4* p = (float4*) ((int8_t*)cloud + (point_step * idx)); // int8_t* to avoid pointer arithmetic but we go byte steps
-    float3 p3 = make_float3(p->x, p->y, p->z);
+    float4 p = *((float4*) ((int8_t*)cloud + (point_step * idx))); // int8_t* to avoid pointer arithmetic but we go byte steps
+    float3 p_t = transform_point(make_float3(p.x, p.y, p.z), rotation, translation);
 
-    bool is_inside_range = inside_range(p3, min_dist, max_dist);
+    bool is_inside_range = inside_range(p_t, min_dist, max_dist);
     if (invert_distance) is_inside_range = !is_inside_range;
     
-    bool is_inside_box = inside_box(p3, min, max);
+    bool is_inside_box = inside_box(p_t, min, max);
     if (invert_bounding_box) is_inside_box = !is_inside_box;
 
-    if (!is_inside_range || !is_inside_box)
+    bool is_inside_fov = inside_vertical_fov(p_t, fov_right, fov_left, forward);
+    if (invert_vertical_fov) is_inside_fov = !is_inside_fov;
+
+    bool is_inside_polygon = point_inside_polygon_winding_number(p_t, polygon, polygon_size);
+    if (invert_polygon) is_inside_polygon = !is_inside_polygon;
+
+    // compute as much as possible before branching or atomicAdd so the kernels run in simd
+    if (!is_inside_range || !is_inside_box || !is_inside_fov && (polygon_size != 0 && !is_inside_polygon))
         return;
 
     uint32_t idx_filtered = atomicAdd(num_points_filtered, 1);
-    cloud_filtered[idx_filtered + 0] = p->x;
-    cloud_filtered[idx_filtered + 1] = p->y;
-    cloud_filtered[idx_filtered + 2] = p->z;
-    cloud_filtered[idx_filtered + 3] = p->w;
+    cloud_filtered[idx_filtered * 4 + 0] = p_t.x;
+    cloud_filtered[idx_filtered * 4 + 1] = p_t.y;
+    cloud_filtered[idx_filtered * 4 + 2] = p_t.z;
+    cloud_filtered[idx_filtered * 4 + 3] = p.w;
 }
 
 extern "C"
@@ -117,7 +170,22 @@ void cupcl_passthrough_filter(
     bool invert_bounding_box,
     bool invert_distance,
     float* cloud_filtered,
-    uint32_t* num_points_filtered)
+    uint32_t* num_points_filtered,
+    float rotation_x,
+    float rotation_y,
+    float rotation_z,
+    float rotation_w,
+    float translation_x,
+    float translation_y,
+    float translation_z,
+    float fov_right,
+    float fov_left,
+    float forward_x,
+    float forward_y,
+    bool invert_vertical_fov,
+    float* polygon,
+    int polygon_size,
+    bool invert_polygon)
 {
 constexpr size_t THREADS_PER_BLOCK = 1024;
 size_t BLOCKS = std::ceil((float)num_points / THREADS_PER_BLOCK);
@@ -133,7 +201,17 @@ krnl_passthrough_filter<<<BLOCKS, THREADS_PER_BLOCK, 0, s>>>(
     invert_bounding_box,
     invert_distance,
     cloud_filtered,
-    num_points_filtered);
+    num_points_filtered,
+    make_float4(rotation_x, rotation_y, rotation_z, rotation_w),
+    make_float3(translation_x, translation_y, translation_z),
+    fov_right,
+    fov_left,
+    make_float2(forward_x, forward_y),
+    invert_vertical_fov,
+    (float2*)polygon,
+    polygon_size,
+    invert_polygon
+    );
     cudaStreamSynchronize(s);
 }
 

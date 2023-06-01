@@ -7,8 +7,8 @@ extern "C"
     void cupcl_passthrough_filter(
         void* stream,
         void* cloud,
-        uint32_t num_points, 
-        uint32_t point_step, 
+        uint32_t num_points,
+        uint32_t point_step,
         float min_dist,
         float max_dist,
         float min_x,
@@ -20,7 +20,22 @@ extern "C"
         bool invert_bounding_box,
         bool invert_distance,
         float* cloud_filtered,
-        uint32_t* num_points_filtered);
+        uint32_t* num_points_filtered,
+        float rotation_x,
+        float rotation_y,
+        float rotation_z,
+        float rotation_w,
+        float translation_x,
+        float translation_y,
+        float translation_z,
+        float fov_right,
+        float fov_left,
+        float forward_x,
+        float forward_y,
+        bool invert_vertical_fov,
+        float* polygon,
+        int polygon_size,
+        bool invert_polygon);
 
 
     void* cupcl_init_voxel_filter(void* stream, float voxel_size_x, float voxel_size_y, float voxel_size_z);

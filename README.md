@@ -1,4 +1,4 @@
-# cupcl-rs
+# cupcl
 
 Rust bindings for CUDA point cloud processing with NVIDIA cuPCL.
 

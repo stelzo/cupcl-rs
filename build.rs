@@ -35,9 +35,9 @@ fn main() {
     println!("cargo:rustc-link-search=native=/usr/local/cuda/targets/aarch64-linux/lib");
     println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
     println!("cargo:rustc-link-lib=cudart");
-    
+
     println!("cargo:rustc-link-lib=stdc++");
-    
+
     println!("cargo:rustc-link-search=native=/usr/local/lib");
     println!("cargo:rustc-link-lib=cudacluster");
     println!("cargo:rustc-link-lib=cudafilter");

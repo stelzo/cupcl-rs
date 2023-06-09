@@ -245,6 +245,7 @@ pub struct PassthroughFilterParameters {
     pub enable_horizontal_fov: bool,
     pub polygon: Option<CudaBuffer>,
     pub invert_polygon: bool,
+    pub invert_fov: bool,
 }
 
 impl Default for PassthroughFilterParameters {
@@ -264,6 +265,7 @@ impl Default for PassthroughFilterParameters {
             enable_horizontal_fov: false,
             polygon: None,
             invert_polygon: false,
+            invert_fov: false,
         }
     }
 }
@@ -320,6 +322,7 @@ pub fn passthrough_filter(
             params.forward.0,
             params.forward.1,
             params.enable_horizontal_fov,
+            params.invert_fov,
             params
                 .polygon
                 .as_ref()

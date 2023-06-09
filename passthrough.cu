@@ -120,6 +120,7 @@ void krnl_passthrough_filter(
     float fov_left,
     float2 forward,
     bool enable_horizontal_fov,
+    bool invert_fov,
     float2* polygon,
     int polygon_size,
     bool invert_polygon)
@@ -137,6 +138,7 @@ void krnl_passthrough_filter(
     if (invert_bounding_box) is_inside_box = !is_inside_box;
 
     bool is_inside_fov = inside_horizontal_fov(p_t, fov_right, fov_left, forward);
+    if (invert_fov) is_inside_fov = !is_inside_fov;
 
     bool is_inside_polygon = point_inside_polygon_winding_number(p_t, polygon, polygon_size);
     if (invert_polygon) is_inside_polygon = !is_inside_polygon;
@@ -183,6 +185,7 @@ void cupcl_passthrough_filter(
     float forward_x,
     float forward_y,
     bool enable_horizontal_fov,
+    bool invert_fov,
     float* polygon,
     int polygon_size,
     bool invert_polygon)
@@ -208,6 +211,7 @@ krnl_passthrough_filter<<<BLOCKS, THREADS_PER_BLOCK, 0, s>>>(
     safe_angle(fov_left),
     make_float2(forward_x, forward_y),
     enable_horizontal_fov,
+    invert_fov,
     (float2*)polygon,
     polygon_size,
     invert_polygon

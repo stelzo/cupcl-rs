@@ -32,7 +32,8 @@ extern "C"
         float fov_left,
         float forward_x,
         float forward_y,
-        bool invert_vertical_fov,
+        bool enable_vertical_fov,
+        bool invert_fov,
         float* polygon,
         int polygon_size,
         bool invert_polygon);

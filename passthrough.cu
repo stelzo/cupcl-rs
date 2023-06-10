@@ -148,9 +148,9 @@ void krnl_passthrough_filter(
         return;
 
     uint32_t idx_filtered = atomicAdd(num_points_filtered, 1);
-    cloud_filtered[idx_filtered * 4 + 0] = p_t.x;
-    cloud_filtered[idx_filtered * 4 + 1] = p_t.y;
-    cloud_filtered[idx_filtered * 4 + 2] = p_t.z;
+    cloud_filtered[idx_filtered * 4 + 0] = p.x;
+    cloud_filtered[idx_filtered * 4 + 1] = p.y;
+    cloud_filtered[idx_filtered * 4 + 2] = p.z;
     cloud_filtered[idx_filtered * 4 + 3] = p.w;
 }
 

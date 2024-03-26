@@ -3,14 +3,24 @@ name = "cupcl"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+linfa-clustering = { version = "0.6", optional = true }
+linfa = { version = "0.6", optional = true }
+linfa-datasets = { version = "0.6", optional = true }
+ndarray = { version = "0", optional = true }
+rustc-hash = { version = "1.1", optional = true }
 
 [dev-dependencies]
-rand = "0.8.5"
+rand = "0.8"
 
 [build-dependencies]
-bindgen = "0.53.1"
-cmake = "0.1"
-cc = "1.0.79"
+bindgen = { version = "0", optional = true }
+cmake = { version = "0", optional = true }
+cc = { version = "1", optional = true }
+
+[features]
+cuda = ["cc", "cmake", "bindgen"]
+cpu = ["linfa", "linfa-clustering", "linfa-datasets", "ndarray", "rustc-hash"]
+
+#default = ["cuda"]
+default = ["cpu"]

@@ -3,14 +3,23 @@ name = "cupcl"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+ndarray = { version = "0", optional = true }
+rustc-hash = { version = "1.1", optional = true }
+rayon = { version = "1.10.0", optional = true }
+petal-clustering = { version = "0.8.0", optional = true }
+petal-neighbors = { version = "0.10.0", optional = true }
 
 [dev-dependencies]
-rand = "0.8.5"
+rand = "0.8"
 
 [build-dependencies]
-bindgen = "0.53.1"
-cmake = "0.1"
-cc = "1.0.79"
+bindgen = { version = "0", optional = true }
+cmake = { version = "0", optional = true }
+cc = { version = "1", optional = true }
+
+[features]
+cuda = ["dep:cc", "dep:cmake", "dep:bindgen"]
+cpu = ["dep:ndarray", "dep:rustc-hash", "dep:petal-clustering", "dep:petal-neighbors"]
+
+default = ["cpu"]

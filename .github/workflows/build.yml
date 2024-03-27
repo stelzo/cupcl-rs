@@ -1,0 +1,21 @@
+name: Build and test
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+    - uses: actions/checkout@v4
+    - name: 🔎 Testing library
+      run: cargo build
+    - name: 🧪 Testing library
+      run: cargo test --features cpu

@@ -1,9 +1,14 @@
+#[cfg(feature = "cuda")]
 extern crate bindgen;
 
+#[cfg(feature = "cuda")]
 use std::env;
+
+#[cfg(feature = "cuda")]
 use std::path::PathBuf;
 
-fn main() {
+#[cfg(feature = "cuda")]
+pub fn link_cuda() {
     println!("cargo:rerun-if-changed=cluster.hpp");
     println!("cargo:rerun-if-changed=cluster.cpp");
     println!("cargo:rerun-if-changed=common.hpp");
@@ -41,4 +46,16 @@ fn main() {
     println!("cargo:rustc-link-search=native=/usr/local/lib");
     println!("cargo:rustc-link-lib=cudacluster");
     println!("cargo:rustc-link-lib=cudafilter");
+}
+
+fn main() {
+    let cpu_feature_enabled = cfg!(feature = "cpu");
+    let cuda_feature_enabled = cfg!(feature = "cuda");
+
+    if cpu_feature_enabled && cuda_feature_enabled {
+        panic!("The features 'cpu' and 'cuda' cannot be enabled at the same time.");
+    }
+    
+    #[cfg(feature = "cuda")]
+    link_cuda()
 }

@@ -1,6 +1,8 @@
 use crate::*;
-use linfa::prelude::Transformer;
-use linfa_clustering::{Dbscan, DbscanParamsError};
+use ndarray::{ArrayBase, OwnedRepr};
+use petal_clustering::{Dbscan, Fit};
+use petal_neighbors::distance::Euclidean;
+
 
 pub struct VoxelDownsampleParameters {
     pub voxel_size: f32, // size of the voxel
@@ -14,6 +16,7 @@ impl Default for VoxelDownsampleParameters {
     }
 }
 
+#[allow(unused)]
 pub fn voxel_downsample(input: &PointCloud, parameters: VoxelDownsampleParameters) -> PointCloud {
     input.clone() // TODO implement
 }
@@ -36,69 +39,22 @@ pub fn euclidean_cluster(
     cloud: &PointCloud,
     parameters: &EuclideanClusterParameters,
 ) -> Vec<PointCloud> {
+
     if cloud.buffer.len() < parameters.min_points_per_cluster {
         return vec![cloud.clone()];
     }
 
-    let mut data = ndarray::Array2::zeros((cloud.buffer.len(), 3));
+    let data: ArrayBase<OwnedRepr<f64>, _> = ArrayBase::from_shape_vec((cloud.buffer.len(), 3), cloud.as_slice().iter().map(|point| vec![point.x as f64, point.y as f64, point.z as f64]).flatten().collect()).unwrap();
 
-    // TODO rayon
-    cloud.buffer.iter().enumerate().for_each(|(idx, point)| {
-        // TODO pre transform to ndarray before this function
-        data[[idx, 0]] = point.x as f64;
-        data[[idx, 1]] = point.y as f64;
-        data[[idx, 2]] = point.z as f64;
-    });
+    let clustering = Dbscan::new(parameters.tolerance, parameters.min_points_per_cluster, Euclidean::default()).fit(&data);
 
-    let cluster_indices = Dbscan::params(parameters.min_points_per_cluster)
-        .tolerance(parameters.tolerance)
-        .transform(&data);
-    let cluster_indices = match cluster_indices {
-        Ok(clusters) => clusters,
-        Err(e) => {
-            return match e {
-                DbscanParamsError::MinPoints => {
-                    //println!("MinPoints too low, no clusters found");
-                    vec![cloud.clone()]
-                }
-                DbscanParamsError::Tolerance => {
-                    //println!("Tolerance too low, no clusters found");
-                    vec![cloud.clone()]
-                }
-            };
+    clustering.0.iter().map(|cluster| {
+        let mut cluster_points = Vec::with_capacity(cluster.1.len());
+        for idx in cluster.1 {
+            cluster_points.push(cloud.buffer[*idx].clone());
         }
-    };
-
-    // find how many different usize values are in the cluster_indices
-    let unique_cluster_indices =
-        cluster_indices
-            .iter()
-            .fold(rustc_hash::FxHashSet::default(), |mut acc, idx| {
-                match idx {
-                    Some(idx) => {
-                        acc.insert(*idx);
-                    }
-                    None => {}
-                }
-                acc
-            });
-
-    let mut clusters = vec![PointCloud::from_full_cloud(Vec::new()); unique_cluster_indices.len()];
-    for (idx, cluster_idx) in cluster_indices.iter().enumerate() {
-        match cluster_idx {
-            Some(cluster_idx) => {
-                clusters[*cluster_idx].buffer.push(Point::new(
-                    cloud.buffer[idx].x,
-                    cloud.buffer[idx].y,
-                    cloud.buffer[idx].z,
-                    cloud.buffer[idx].i,
-                ));
-            }
-            None => {}
-        }
-    }
-
-    clusters
+        PointCloud::from_full_cloud(cluster_points)
+    }).collect()
 }
 
 fn rotate_by_quaternion(p: (f32, f32, f32), q: (f32, f32, f32, f32)) -> (f32, f32, f32) {
@@ -265,15 +221,14 @@ mod tests {
         let pointcloud = PointCloud::from_full_cloud(cloud);
 
         let parameters = EuclideanClusterParameters {
-            tolerance: 0.2,
-            min_points_per_cluster: 100,
+            tolerance: 0.02,
+            min_points_per_cluster: 50,
         };
 
         let clusters = euclidean_cluster(
             &pointcloud,
             &parameters,
         );
-        print!("Number of clusters: {}", clusters.len());
         assert!(!clusters.is_empty());
 
         for cluster in clusters {

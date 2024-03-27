@@ -5,15 +5,13 @@ mod io;
 mod cuda;
 
 #[cfg(feature = "cuda")]
-pub use crate::cuda::{
-    euclidean_cluster, passthrough_filter, voxel_downsample, CudaBuffer, CudaStream,
-};
+pub use crate::cuda::*;
 
 #[cfg(feature = "cpu")]
 mod cpu;
 
 #[cfg(feature = "cpu")]
-pub use crate::cpu::{euclidean_cluster, passthrough_filter, voxel_downsample};
+pub use crate::cpu::*;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]

@@ -109,6 +109,9 @@ pub struct PassthroughFilterParameters {
 
     pub invert_polygon: bool,
     pub invert_fov: bool,
+    pub min_intensity: f32,
+    pub max_intensity: f32,
+    pub invert_intensity: bool,
 }
 
 impl Default for PassthroughFilterParameters {
@@ -129,6 +132,9 @@ impl Default for PassthroughFilterParameters {
             polygon: None,
             invert_polygon: false,
             invert_fov: false,
+            min_intensity: f32::MIN,
+            max_intensity: f32::MAX,
+            invert_intensity: false,
         }
     }
 }

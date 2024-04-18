@@ -53,6 +53,12 @@ bool inside_range(float3 p, float min_dist, float max_dist)
 }
 
 __forceinline__ __device__
+bool within_intensity(float intensity, float min_intensity, float max_intensity)
+{
+    return intensity >= min_intensity && intensity <= max_intensity;
+}
+
+__forceinline__ __device__
 bool inside_box(float3 p, float3 min, float3 max)
 {
     return p.x >= min.x && p.x <= max.x &&
@@ -123,7 +129,10 @@ void krnl_passthrough_filter(
     bool invert_fov,
     float2* polygon,
     int polygon_size,
-    bool invert_polygon)
+    bool invert_polygon,
+    float min_intensity,
+    float max_intensity,
+    bool invert_intensity)
 {
     uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_points) return;
@@ -133,6 +142,9 @@ void krnl_passthrough_filter(
 
     bool is_inside_range = inside_range(p_t, min_dist, max_dist);
     if (invert_distance) is_inside_range = !is_inside_range;
+
+    bool is_within_intensity = within_intensity(p.w, min_intensity, max_intensity);
+    if(invert_intensity) is_within_intensity = !is_within_intensity;
     
     bool is_inside_box = inside_box(p_t, min, max);
     if (invert_bounding_box) is_inside_box = !is_inside_box;
@@ -144,7 +156,7 @@ void krnl_passthrough_filter(
     if (invert_polygon) is_inside_polygon = !is_inside_polygon;
 
     // compute as much as possible before branching or atomicAdd so the kernels run in simd
-    if (!is_inside_range || !is_inside_box || (enable_horizontal_fov && !is_inside_fov) || (polygon_size != 0 && !is_inside_polygon))
+    if (!is_inside_range || !is_within_intensity || !is_inside_box || (enable_horizontal_fov && !is_inside_fov) || (polygon_size != 0 && !is_inside_polygon))
         return;
 
     uint32_t idx_filtered = atomicAdd(num_points_filtered, 1);

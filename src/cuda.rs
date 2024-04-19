@@ -193,6 +193,10 @@ pub fn passthrough_filter(
     let out_size = CudaBuffer::new(stream, std::mem::size_of::<u32>(), 1);
     assert_ne!(input.gpu_ptr, std::ptr::null_mut());
     assert_ne!(output.buffer.gpu_ptr, std::ptr::null_mut());
+
+    // print params
+    println!("params {:?}", params);
+    
     unsafe {
         cupcl_passthrough_filter(
             stream.stream,
@@ -230,6 +234,9 @@ pub fn passthrough_filter(
                 .map_or(std::ptr::null_mut(), |p| p.as_ptr()),
             params.polygon.as_ref().map_or(0, |p| p.n as i32),
             params.invert_polygon,
+            params.min_intensity,
+            params.max_intensity,
+            params.invert_intensity,
         );
     }
     output.buffer.n = out_size.read_value::<u32>().clone() as usize;
@@ -392,5 +399,30 @@ pub mod tests {
 
         let filtered = passthrough_filter(&stream, &cuda_pointcloud.buffer, &params);
         assert_eq!(filtered.buffer.n, 1);
+    }
+
+    #[test]
+    fn intensity_passthrough() {
+        let stream = CudaStream::new();
+
+        let cuda_pointcloud = PointCloud::from_full_cloud(
+            &stream,
+            vec![
+                Point::new(1.0, 0.0, 0.0, 0.0),
+                Point::new(1.0, 0.0, 0.0, 1.0),
+                Point::new(1.0, 0.0, 0.0, 2.0),
+                Point::new(1.0, 0.0, 0.0, 3.0),
+                Point::new(1.0, 0.0, 0.0, 4.0),
+            ],
+        );
+        let mut params = PassthroughFilterParameters::default();
+        params.min_intensity = 1.0;
+        params.max_intensity = 3.0;
+
+        let filtered = passthrough_filter(&stream, &cuda_pointcloud.buffer, &params);
+        assert_eq!(filtered.buffer.n, 3);
+        assert_eq!(filtered.as_slice()[0].i, 1.0);
+        assert_eq!(filtered.as_slice()[1].i, 2.0);
+        assert_eq!(filtered.as_slice()[2].i, 3.0);
     }
 }

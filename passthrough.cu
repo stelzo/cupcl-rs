@@ -53,6 +53,12 @@ bool inside_range(float3 p, float min_dist, float max_dist)
 }
 
 __forceinline__ __device__
+bool within_intensity(float intensity, float min_intensity, float max_intensity)
+{
+    return intensity >= min_intensity && intensity <= max_intensity;
+}
+
+__forceinline__ __device__
 bool inside_box(float3 p, float3 min, float3 max)
 {
     return p.x >= min.x && p.x <= max.x &&
@@ -95,6 +101,28 @@ bool point_inside_polygon_winding_number(float3 p, float2* polygon, int polygon_
     return winding_number != 0;
 }
 
+struct PassthroughParams {
+    uint32_t point_step;
+    float min_dist;
+    float max_dist;
+    float3 min;
+    float3 max;
+    bool invert_bounding_box;
+    bool invert_distance;
+    float4 rotation;
+    float3 translation;
+    float fov_right;
+    float fov_left;
+    float2 forward;
+    bool enable_horizontal_fov;
+    bool invert_fov;
+    float2* polygon;
+    int polygon_size;
+    bool invert_polygon;
+    float min_intensity;
+    float max_intensity;
+    bool invert_intensity;
+};
 
 /**
  * Filter out points that are not within the specified range.
@@ -105,47 +133,39 @@ __global__
 void krnl_passthrough_filter(
     void* cloud,
     uint32_t num_points, 
-    uint32_t point_step, 
-    float min_dist,
-    float max_dist,
-    float3 min,
-    float3 max,
-    bool invert_bounding_box,
-    bool invert_distance,
     float* cloud_filtered,
     uint32_t* num_points_filtered,
-    float4 rotation,
-    float3 translation,
-    float fov_right,
-    float fov_left,
-    float2 forward,
-    bool enable_horizontal_fov,
-    bool invert_fov,
-    float2* polygon,
-    int polygon_size,
-    bool invert_polygon)
+    PassthroughParams params
+    )
 {
     uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_points) return;
 
-    float4 p = *((float4*) ((int8_t*)cloud + (point_step * idx))); // int8_t* to avoid pointer arithmetic but we go byte steps
-    float3 p_t = transform_point(make_float3(p.x, p.y, p.z), rotation, translation);
+    float4 p = *((float4*) ((int8_t*)cloud + (params.point_step * idx))); // int8_t* to avoid pointer arithmetic but we go byte steps
+    float3 p_t = transform_point(make_float3(p.x, p.y, p.z), params.rotation, params.translation);
 
-    bool is_inside_range = inside_range(p_t, min_dist, max_dist);
-    if (invert_distance) is_inside_range = !is_inside_range;
-    
-    bool is_inside_box = inside_box(p_t, min, max);
-    if (invert_bounding_box) is_inside_box = !is_inside_box;
+    bool is_inside_range = inside_range(p_t, params.min_dist, params.max_dist);
+    if (params.invert_distance) is_inside_range = !is_inside_range;
 
-    bool is_inside_fov = inside_horizontal_fov(p_t, fov_right, fov_left, forward);
-    if (invert_fov) is_inside_fov = !is_inside_fov;
+    bool is_within_intensity = within_intensity(p.w, params.min_intensity, params.max_intensity);
+    if(params.invert_intensity) is_within_intensity = !is_within_intensity;
+  
+    bool is_inside_box = inside_box(p_t, params.min, params.max);
+    if (params.invert_bounding_box) is_inside_box = !is_inside_box;
 
-    bool is_inside_polygon = point_inside_polygon_winding_number(p_t, polygon, polygon_size);
-    if (invert_polygon) is_inside_polygon = !is_inside_polygon;
+    bool is_inside_fov = inside_horizontal_fov(p_t, params.fov_right, params.fov_left, params.forward);
+    if (params.invert_fov) is_inside_fov = !is_inside_fov;
+
+
+    bool is_inside_polygon = point_inside_polygon_winding_number(p_t, params.polygon, params.polygon_size);
+    if (params.invert_polygon) is_inside_polygon = !is_inside_polygon;
 
     // compute as much as possible before branching or atomicAdd so the kernels run in simd
-    if (!is_inside_range || !is_inside_box || (enable_horizontal_fov && !is_inside_fov) || (polygon_size != 0 && !is_inside_polygon))
+    if (!is_inside_range || !is_within_intensity || !is_inside_box ||
+        (params.enable_horizontal_fov && !is_inside_fov) ||
+        (params.polygon_size != 0 && !is_inside_polygon)) {
         return;
+    }
 
     uint32_t idx_filtered = atomicAdd(num_points_filtered, 1);
     cloud_filtered[idx_filtered * 4 + 0] = p.x;
@@ -188,33 +208,43 @@ void cupcl_passthrough_filter(
     bool invert_fov,
     float* polygon,
     int polygon_size,
-    bool invert_polygon)
+    bool invert_polygon,
+    float min_intensity,
+    float max_intensity,
+    bool invert_intensity)
 {
-constexpr size_t THREADS_PER_BLOCK = 1024;
-size_t BLOCKS = std::ceil((float)num_points / THREADS_PER_BLOCK);
-cudaStream_t s = (cudaStream_t)stream;
-krnl_passthrough_filter<<<BLOCKS, THREADS_PER_BLOCK, 0, s>>>(
-    cloud,
-    num_points,
-    point_step,
-    min_dist,
-    max_dist,
-    make_float3(min_x, min_y, min_z),
-    make_float3(max_x, max_y, max_z),
-    invert_bounding_box,
-    invert_distance,
-    cloud_filtered,
-    num_points_filtered,
-    make_float4(rotation_x, rotation_y, rotation_z, rotation_w),
-    make_float3(translation_x, translation_y, translation_z),
-    safe_angle(fov_right),
-    safe_angle(fov_left),
-    make_float2(forward_x, forward_y),
-    enable_horizontal_fov,
-    invert_fov,
-    (float2*)polygon,
-    polygon_size,
-    invert_polygon
+    constexpr size_t THREADS_PER_BLOCK = 256;
+    size_t BLOCKS = (num_points + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    cudaStream_t s = (cudaStream_t)stream;
+
+    struct PassthroughParams params;
+    params.point_step = point_step;
+    params.min_dist = min_dist;
+    params.max_dist = max_dist;
+    params.min = make_float3(min_x, min_y, min_z);
+    params.max = make_float3(max_x, max_y, max_z);
+    params.invert_bounding_box = invert_bounding_box;
+    params.invert_distance = invert_distance;
+    params.rotation = make_float4(rotation_x, rotation_y, rotation_z, rotation_w);
+    params.translation = make_float3(translation_x, translation_y, translation_z);
+    params.fov_right = safe_angle(fov_right);
+    params.fov_left = safe_angle(fov_left);
+    params.forward = make_float2(forward_x, forward_y);
+    params.enable_horizontal_fov = enable_horizontal_fov;
+    params.invert_fov = invert_fov;
+    params.polygon = (float2*)polygon;
+    params.polygon_size = polygon_size;
+    params.invert_polygon = invert_polygon;
+    params.min_intensity = min_intensity;
+    params.max_intensity = max_intensity;
+    params.invert_intensity = invert_intensity;
+
+    krnl_passthrough_filter<<<BLOCKS, THREADS_PER_BLOCK, 0, s>>>(
+        cloud,
+        num_points,
+        cloud_filtered,
+        num_points_filtered,
+        params
     );
     cudaStreamSynchronize(s);
 }

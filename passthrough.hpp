@@ -36,7 +36,10 @@ extern "C"
         bool invert_fov,
         float* polygon,
         int polygon_size,
-        bool invert_polygon);
+        bool invert_polygon,
+        float min_intensity,
+        float max_intensity,
+        bool invert_intensity);
 
 
     void* cupcl_init_voxel_filter(void* stream, float voxel_size_x, float voxel_size_y, float voxel_size_z);

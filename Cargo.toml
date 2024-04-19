@@ -20,6 +20,6 @@ cc = { version = "1", optional = true }
 
 [features]
 cuda = ["dep:cc", "dep:cmake", "dep:bindgen"]
-cpu = ["dep:ndarray", "dep:rustc-hash", "dep:petal-clustering", "dep:petal-neighbors"]
+cpu = ["dep:ndarray", "dep:rustc-hash", "dep:petal-clustering", "dep:petal-neighbors", "dep:rayon"]
 
 default = ["cpu"]

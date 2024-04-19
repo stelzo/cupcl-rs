@@ -19,7 +19,7 @@ pub fn link_cuda() {
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.hpp")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("Unable to generate bindings");
 
@@ -28,17 +28,27 @@ pub fn link_cuda() {
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
 
+    let cuda_include_dir = if cfg!(target_arch = "aarch64") {
+        "/usr/local/cuda/targets/aarch64-linux/include"
+    } else {
+        "/usr/local/cuda/include"
+    };
+
     cc::Build::new()
         .cuda(true)
         .cpp_link_stdlib("stdc++")
         .files(["cluster.cpp", "common.cpp", "passthrough.cu"])
-        .include("/usr/local/cuda/targets/aarch64-linux/include")
+        .include(cuda_include_dir)
+        .flag_if_supported("-O3")
         .compile("cupcl");
 
     println!("cargo:rustc-link-lib=cupcl");
 
-    println!("cargo:rustc-link-search=native=/usr/local/cuda/targets/aarch64-linux/lib");
-    println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
+    if cfg!(target_arch = "aarch64") {
+        println!("cargo:rustc-link-search=native=/usr/local/cuda/targets/aarch64-linux/lib");
+    } else {
+        println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
+    }
     println!("cargo:rustc-link-lib=cudart");
 
     println!("cargo:rustc-link-lib=stdc++");

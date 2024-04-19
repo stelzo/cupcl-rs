@@ -2,6 +2,7 @@ use crate::*;
 use ndarray::{ArrayBase, OwnedRepr};
 use petal_clustering::{Dbscan, Fit};
 use petal_neighbors::distance::Euclidean;
+use rayon::prelude::*;
 
 
 pub struct VoxelDownsampleParameters {
@@ -123,6 +124,10 @@ fn inside_box(p: (f32, f32, f32), min: (f32, f32, f32), max: (f32, f32, f32)) ->
     p.0 >= min.0 && p.0 <= max.0 && p.1 >= min.1 && p.1 <= max.1 && p.2 >= min.2 && p.2 <= max.2
 }
 
+fn within_intensity(point_intensity: f32, min_intensity: f32, max_intensity: f32) -> bool {
+    point_intensity >= min_intensity && point_intensity <= max_intensity
+}
+
 fn inside_horizontal_fov(
     p: (f32, f32, f32),
     fov_right: f32,
@@ -165,7 +170,7 @@ fn point_inside_polygon_winding_number(
 pub fn passthrough_filter(input: PointCloud, params: &PassthroughFilterParameters) -> PointCloud {
     let res = input
         .buffer
-        .into_iter()
+        .into_par_iter()
         .filter(|point| {
             let p_t = transform_point(
                 (point.x, point.y, point.z),
@@ -178,32 +183,34 @@ pub fn passthrough_filter(input: PointCloud, params: &PassthroughFilterParameter
                 is_inside_range = !is_inside_range;
             }
 
+            let mut is_within_intensity = within_intensity(point.i, params.min_intensity, params.max_intensity);
+            if params.invert_intensity {
+                is_within_intensity = !is_within_intensity;
+            }
 
             let mut is_inside_box = inside_box(p_t, params.min, params.max);
             if params.invert_bounding_box {
                 is_inside_box = !is_inside_box;
             }
 
-            let mut is_inside_fov =
-                inside_horizontal_fov(p_t, params.fov_right, params.fov_left, params.forward);
+            let mut is_inside_fov = inside_horizontal_fov(p_t, params.fov_right, params.fov_left, params.forward);
             if params.invert_fov {
                 is_inside_fov = !is_inside_fov;
             }
 
-            match &params.polygon {
-                None => {
-                    return !(!is_inside_range || !is_inside_box || (params.enable_horizontal_fov && !is_inside_fov));
-                }
+            let is_inside_polygon = match &params.polygon {
+                None => true,
                 Some(polygon) => {
-                    let mut is_inside_polygon =
-                        point_inside_polygon_winding_number(p_t, polygon, polygon.len());
+                    let mut is_inside_polygon = point_inside_polygon_winding_number(p_t, polygon, polygon.len());
                     if params.invert_polygon {
                         is_inside_polygon = !is_inside_polygon;
                     }
-
-                    return is_inside_polygon;
+                    polygon.len() != 0 && is_inside_polygon
                 }
-            }
+            };
+            
+
+            is_inside_range && is_inside_box && is_within_intensity && (!params.enable_horizontal_fov || is_inside_fov) && is_inside_polygon
         })
         .collect::<Vec<Point>>();
 
@@ -302,5 +309,27 @@ mod tests {
 
         let filtered = passthrough_filter(pointcloud, &params);
         assert_eq!(filtered.buffer.len(), 1);
+    }
+
+    #[test]
+    fn intensity_passthrough() {
+        let pointcloud = PointCloud::from_full_cloud(
+            vec![
+                Point::new(1.0, 0.0, 0.0, 0.0),
+                Point::new(1.0, 0.0, 0.0, 1.0),
+                Point::new(1.0, 0.0, 0.0, 2.0),
+                Point::new(1.0, 0.0, 0.0, 3.0),
+                Point::new(1.0, 0.0, 0.0, 4.0),
+            ],
+        );
+        let mut params = PassthroughFilterParameters::default();
+        params.min_intensity = 1.0;
+        params.max_intensity = 3.0;
+
+        let filtered = passthrough_filter(pointcloud, &params);
+        assert_eq!(filtered.buffer.len(), 3);
+        assert_eq!(filtered.buffer[0].i, 1.0);
+        assert_eq!(filtered.buffer[1].i, 2.0);
+        assert_eq!(filtered.buffer[2].i, 3.0);
     }
 }

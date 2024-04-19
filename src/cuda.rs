@@ -193,6 +193,10 @@ pub fn passthrough_filter(
     let out_size = CudaBuffer::new(stream, std::mem::size_of::<u32>(), 1);
     assert_ne!(input.gpu_ptr, std::ptr::null_mut());
     assert_ne!(output.buffer.gpu_ptr, std::ptr::null_mut());
+
+    // print params
+    println!("params {:?}", params);
+    
     unsafe {
         cupcl_passthrough_filter(
             stream.stream,
@@ -417,8 +421,8 @@ pub mod tests {
 
         let filtered = passthrough_filter(&stream, &cuda_pointcloud.buffer, &params);
         assert_eq!(filtered.buffer.n, 3);
-        assert_eq!(filtered.buffer.as_slice()[0].i, 1.0);
-        assert_eq!(filtered.buffer.as_slice()[1].i, 2.0);
-        assert_eq!(filtered.buffer.as_slice()[2].i, 3.0);
+        assert_eq!(filtered.as_slice()[0].i, 1.0);
+        assert_eq!(filtered.as_slice()[1].i, 2.0);
+        assert_eq!(filtered.as_slice()[2].i, 3.0);
     }
 }

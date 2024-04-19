@@ -87,6 +87,8 @@ impl PointCloud {
     }
 }
 
+#[derive(Debug)]
+
 pub struct PassthroughFilterParameters {
     pub min: (f32, f32, f32),
     pub max: (f32, f32, f32),

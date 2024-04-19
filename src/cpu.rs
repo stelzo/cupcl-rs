@@ -2,6 +2,7 @@ use crate::*;
 use ndarray::{ArrayBase, OwnedRepr};
 use petal_clustering::{Dbscan, Fit};
 use petal_neighbors::distance::Euclidean;
+use rayon::prelude::*;
 
 
 pub struct VoxelDownsampleParameters {
@@ -169,7 +170,7 @@ fn point_inside_polygon_winding_number(
 pub fn passthrough_filter(input: PointCloud, params: &PassthroughFilterParameters) -> PointCloud {
     let res = input
         .buffer
-        .into_iter()
+        .into_par_iter()
         .filter(|point| {
             let p_t = transform_point(
                 (point.x, point.y, point.z),

@@ -9,6 +9,7 @@ rustc-hash = { version = "1.1", optional = true }
 rayon = { version = "1.10.0", optional = true }
 petal-clustering = { version = "0.8.0", optional = true }
 petal-neighbors = { version = "0.10.0", optional = true }
+dashmap = { version = "5.5.3", features = ["rayon"], optional = true }
 
 [dev-dependencies]
 rand = "0.8"
@@ -20,6 +21,12 @@ cc = { version = "1", optional = true }
 
 [features]
 cuda = ["dep:cc", "dep:cmake", "dep:bindgen"]
-cpu = ["dep:ndarray", "dep:rustc-hash", "dep:petal-clustering", "dep:petal-neighbors", "dep:rayon"]
+cpu = [
+    "dep:ndarray",
+    "dep:rustc-hash",
+    "dep:petal-clustering",
+    "dep:petal-neighbors",
+]
+rayon = ["dep:rayon", "dep:dashmap", "dep:dashmap"]
 
-default = ["cpu"]
+default = ["cpu", "rayon"]

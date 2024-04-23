@@ -37,6 +37,12 @@ impl Point {
     }
 }
 
+pub enum VoxelDownsampleStrategy {
+    Center,
+    Average,
+    Median,
+}
+
 #[derive(Debug, Clone)]
 pub struct PointCloud {
     #[cfg(feature = "cpu")]

@@ -196,7 +196,7 @@ pub fn passthrough_filter(
 
     // print params
     println!("params {:?}", params);
-    
+
     unsafe {
         cupcl_passthrough_filter(
             stream.stream,

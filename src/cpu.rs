@@ -15,18 +15,18 @@ impl Default for VoxelDownsampleParameters {
     fn default() -> Self {
         Self {
             voxel_size: 0.1,
-            strategy: VoxelDownsampleStrategy::Center,
+            strategy: VoxelDownsampleStrategy::Median,
         }
     }
 }
 
 fn hash_func_3d_points(point: &Point, voxel_size: f32) -> usize {
-    let x = (point.x / voxel_size).round() as usize;
-    let y = (point.y / voxel_size).round() as usize;
-    let z = (point.z / voxel_size).round() as usize;
-    let mut key: usize = (x * 73856093) ^ (y * 471943) ^ (z * 83492791);
-    key = key % 100000; // MOD 100000, 1000000007
-    key
+    let inv_res = 1.0 / voxel_size;
+    let x = (point.x * inv_res).round() as i32;
+    let y = (point.y * inv_res).round() as i32;
+    let z = (point.z * inv_res).round() as i32;
+    let key = (x * 73856093) ^ (y * 471943) ^ (z * 83492791) % 100000;
+    key as usize
 }
 
 // hash point into grid cell and return the center of the cell as the new point

@@ -306,9 +306,9 @@ fn rotate_by_quaternion(p: (f64, f64, f64), q: (f64, f64, f64, f64)) -> (f64, f6
     let s = q.3;
 
     let x = (
-        (u.0 + u.0) * dot_float3(u, p),
-        (u.1 + u.1) * dot_float3(u, p),
-        (u.2 + u.2) * dot_float3(u, p),
+        u.0 * 2.0 * dot_float3(u, p),
+        u.1 * 2.0 * dot_float3(u, p),
+        u.2 * 2.0 * dot_float3(u, p),
     );
     let y = (
         p.0 * (s * s - dot_float3(u, u)),
@@ -316,9 +316,9 @@ fn rotate_by_quaternion(p: (f64, f64, f64), q: (f64, f64, f64, f64)) -> (f64, f6
         p.2 * (s * s - dot_float3(u, u)),
     );
     let z = (
-        cross_float3(u, p).0 * (s + s),
-        cross_float3(u, p).1 * (s + s),
-        cross_float3(u, p).2 * (s + s),
+        cross_float3(u, p).0 * s * 2.0,
+        cross_float3(u, p).1 * s * 2.0,
+        cross_float3(u, p).2 * s * 2.0,
     );
 
     (x.0 + y.0 + z.0, x.1 + y.1 + z.1, x.2 + y.2 + z.2)

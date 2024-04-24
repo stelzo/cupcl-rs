@@ -1,6 +1,6 @@
 use crate::*;
-use petal_clustering::Fit;
 use num_traits::Float;
+use petal_clustering::Fit;
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -29,14 +29,14 @@ fn hash_func_3d_points<T: Point<U>, U: Float + Into<f64>>(point: &T, voxel_size:
 }
 
 fn voxel_downsample_center<T: Point<U>, U: Float + Into<f64>>(
-    input: &PointCloud<T, U>,
+    input: PointCloud<T, U>,
     parameters: VoxelDownsampleParameters,
 ) -> PointCloud<T, U> {
     let mut hashes = rustc_hash::FxHashSet::default();
     let mut voxel_center = Vec::new();
 
-    for point in input.buffer.iter() {
-        let hash = hash_func_3d_points(point, parameters.voxel_size);
+    for point in input.it.unwrap() {
+        let hash: usize = hash_func_3d_points(&point, parameters.voxel_size);
         if !hashes.contains(&hash) {
             hashes.insert(hash);
             voxel_center.push(T::with_xyzif64(
@@ -55,18 +55,18 @@ fn voxel_downsample_center<T: Point<U>, U: Float + Into<f64>>(
 }
 
 pub fn voxel_downsample_center_par<T: Point<U>, U: Float + Into<f64>>(
-    input: &PointCloud<T, U>,
+    input: PointCloud<T, U>,
     parameters: VoxelDownsampleParameters,
 ) -> PointCloud<T, U> {
     #[cfg(all(feature = "rayon", feature = "cpu"))]
     let it = input.buffer.par_iter();
     #[cfg(all(feature = "cpu", not(feature = "rayon")))]
-    let it = input.buffer.iter();
+    let it = input.it.unwrap();
 
     let mut hashes = it
         .enumerate()
         .map(|(_, point)| {
-            return (hash_func_3d_points(point, parameters.voxel_size), *point);
+            return (hash_func_3d_points(&point, parameters.voxel_size), point);
         })
         .collect::<Vec<(usize, T)>>();
 
@@ -96,10 +96,10 @@ pub fn voxel_downsample_center_par<T: Point<U>, U: Float + Into<f64>>(
 }
 
 fn voxel_downsample_average<T: Point<U>, U: Float + Into<f64>>(
-    input: &PointCloud<T, U>,
+    input: PointCloud<T, U>,
     parameters: VoxelDownsampleParameters,
 ) -> PointCloud<T, U> {
-    let hashes = hash_points(&input.buffer, parameters.voxel_size);
+    let hashes = hash_points(input.it, parameters.voxel_size);
 
     #[cfg(all(feature = "rayon", feature = "cpu"))]
     let it = hashes.par_iter();
@@ -135,20 +135,20 @@ fn voxel_downsample_average<T: Point<U>, U: Float + Into<f64>>(
 #[cfg(all(feature = "cpu", not(feature = "rayon")))]
 #[inline(always)]
 fn hash_points<T: Point<U>, U: Float + Into<f64>>(
-    input: &Vec<T>,
+    input: Box<dyn FallibleIterator<Item = T, Error = ConversionError>>,
     voxel_size: f64,
 ) -> rustc_hash::FxHashMap<usize, Vec<T>> {
     let mut hashes = rustc_hash::FxHashMap::default();
 
-    for point in input.iter() {
-        let hash = hash_func_3d_points(point, voxel_size);
+    for point in input.unwrap() {
+        let hash = hash_func_3d_points(&point, voxel_size);
         if !hashes.contains_key(&hash) {
             hashes.insert(hash, Vec::new());
         }
         hashes
             .get_mut(&hash)
             .expect("entry created the line before")
-            .push(*point);
+            .push(point);
     }
 
     hashes
@@ -177,10 +177,10 @@ fn hash_points<T: Point<U>, U: Float + Into<f64>>(
 }
 
 fn voxel_downsample_median<T: Point<U>, U: Float + Into<f64>>(
-    input: &PointCloud<T, U>,
+    input: PointCloud<T, U>,
     parameters: VoxelDownsampleParameters,
 ) -> PointCloud<T, U> {
-    let hashes = hash_points(&input.buffer, parameters.voxel_size);
+    let hashes = hash_points(input.it, parameters.voxel_size);
 
     #[cfg(all(feature = "rayon", feature = "cpu"))]
     let it = hashes.par_iter();
@@ -229,7 +229,7 @@ fn voxel_downsample_median<T: Point<U>, U: Float + Into<f64>>(
 }
 
 pub fn voxel_downsample<T: Point<U>, U: Float + Into<f64>>(
-    input: &PointCloud<T, U>,
+    input: PointCloud<T, U>,
     parameters: VoxelDownsampleParameters,
 ) -> PointCloud<T, U> {
     match parameters.strategy {
@@ -254,29 +254,38 @@ impl Default for EuclideanClusterParameters {
 }
 
 pub fn euclidean_cluster<T: Point<U>, U: Float + Into<f64>>(
-    cloud: &PointCloud<T, U>,
+    cloud: PointCloud<T, U>,
     parameters: &EuclideanClusterParameters,
 ) -> Vec<PointCloud<T, U>> {
-    if cloud.buffer.len() < parameters.min_points_per_cluster {
-        return vec![cloud.clone()];
-    }
+    match cloud.buffer {
+        Some(buff) => {
+            if buff.len() < parameters.min_points_per_cluster {
+                return Vec::new(); // no clusters, TODO maybe return the input cloud?
+            }
+        }
+        None => {}
+    };
 
     #[cfg(all(feature = "rayon", feature = "cpu"))]
     let it = cloud.as_slice().par_iter();
     #[cfg(all(feature = "cpu", not(feature = "rayon")))]
-    let it = cloud.as_slice().iter();
+    let it = cloud.it.unwrap();
+
+    let points = it.collect::<Vec<T>>(); // TODO avoid this copy
 
     let data: ndarray::ArrayBase<ndarray::OwnedRepr<f64>, _> = ndarray::ArrayBase::from_shape_vec(
-        (cloud.buffer.len(), 3),
-        it.map(|point| {
-            vec![
-                point.get_x().into(),
-                point.get_y().into(),
-                point.get_z().into(),
-            ]
-        })
-        .flatten()
-        .collect(),
+        (points.len(), 3),
+        points
+            .iter()
+            .map(|point| {
+                vec![
+                    point.get_x().into(),
+                    point.get_y().into(),
+                    point.get_z().into(),
+                ]
+            })
+            .flatten()
+            .collect(),
     )
     .unwrap();
 
@@ -293,7 +302,7 @@ pub fn euclidean_cluster<T: Point<U>, U: Float + Into<f64>>(
         .map(|cluster| {
             let mut cluster_points = Vec::with_capacity(cluster.1.len());
             for idx in cluster.1 {
-                cluster_points.push(cloud.buffer[*idx].clone());
+                cluster_points.push(points[*idx].clone());
             }
             PointCloud::from_full_cloud(cluster_points)
         })
@@ -422,72 +431,70 @@ fn point_inside_polygon_winding_number<U: Float>(
 
 pub fn passthrough_filter<T: Point<U>, U: Float + Into<f64>>(
     input: PointCloud<T, U>,
-    params: &PassthroughFilterParameters,
+    params: PassthroughFilterParameters,
 ) -> PointCloud<T, U> {
     #[cfg(all(feature = "rayon", feature = "cpu"))]
     let it = input.buffer.into_par_iter();
 
     #[cfg(all(feature = "cpu", not(feature = "rayon")))]
-    let it = input.buffer.into_iter();
+    let it = input.it.unwrap();
 
-    let res = it
-        .filter(|point| {
-            let p_t = transform_point(
-                (
-                    point.get_x().into(),
-                    point.get_y().into(),
-                    point.get_z().into(),
-                ),
-                params.rotation,
-                params.translation,
-            );
+    let res = it.filter(move |point| {
+        let p_t = transform_point(
+            (
+                point.get_x().into(),
+                point.get_y().into(),
+                point.get_z().into(),
+            ),
+            params.rotation,
+            params.translation,
+        );
 
-            let mut is_inside_range = inside_range(p_t, params.min_dist, params.max_dist);
-            if params.invert_distance {
-                is_inside_range = !is_inside_range;
-            }
+        let mut is_inside_range = inside_range(p_t, params.min_dist, params.max_dist);
+        if params.invert_distance {
+            is_inside_range = !is_inside_range;
+        }
 
-            let mut is_within_intensity = within_intensity(
-                point.get_i().into(),
-                params.min_intensity,
-                params.max_intensity,
-            );
-            if params.invert_intensity {
-                is_within_intensity = !is_within_intensity;
-            }
+        let mut is_within_intensity = within_intensity(
+            point.get_i().into(),
+            params.min_intensity,
+            params.max_intensity,
+        );
+        if params.invert_intensity {
+            is_within_intensity = !is_within_intensity;
+        }
 
-            let mut is_inside_box = inside_box(p_t, params.min, params.max);
-            if params.invert_bounding_box {
-                is_inside_box = !is_inside_box;
-            }
+        let mut is_inside_box = inside_box(p_t, params.min, params.max);
+        if params.invert_bounding_box {
+            is_inside_box = !is_inside_box;
+        }
 
-            let mut is_inside_fov =
-                inside_horizontal_fov(p_t, params.fov_right, params.fov_left, params.forward);
-            if params.invert_fov {
-                is_inside_fov = !is_inside_fov;
-            }
+        let mut is_inside_fov =
+            inside_horizontal_fov(p_t, params.fov_right, params.fov_left, params.forward);
+        if params.invert_fov {
+            is_inside_fov = !is_inside_fov;
+        }
 
-            let is_inside_polygon = match &params.polygon {
-                None => true,
-                Some(polygon) => {
-                    let mut is_inside_polygon =
-                        point_inside_polygon_winding_number(p_t, polygon, polygon.len());
-                    if params.invert_polygon {
-                        is_inside_polygon = !is_inside_polygon;
-                    }
-                    polygon.len() != 0 && is_inside_polygon
+        let is_inside_polygon = match &params.polygon {
+            None => true,
+            Some(polygon) => {
+                let mut is_inside_polygon =
+                    point_inside_polygon_winding_number(p_t, polygon, polygon.len());
+                if params.invert_polygon {
+                    is_inside_polygon = !is_inside_polygon;
                 }
-            };
+                polygon.len() != 0 && is_inside_polygon
+            }
+        };
 
-            is_inside_range
-                && is_inside_box
-                && is_within_intensity
-                && (!params.enable_horizontal_fov || is_inside_fov)
-                && is_inside_polygon
-        })
-        .collect::<Vec<T>>();
+        is_inside_range
+            && is_inside_box
+            && is_within_intensity
+            && (!params.enable_horizontal_fov || is_inside_fov)
+            && is_inside_polygon
+    });
 
-    PointCloud::from_full_cloud(res)
+    PointCloud::from_iterable(res)
 }
 
 #[cfg(test)]
@@ -524,11 +531,12 @@ mod tests {
             min_points_per_cluster: 50,
         };
 
-        let clusters = euclidean_cluster(&pointcloud, &parameters);
+        let clusters = euclidean_cluster(pointcloud, &parameters);
         assert!(!clusters.is_empty());
 
         for cluster in clusters {
-            assert!(cluster.buffer.len() > parameters.min_points_per_cluster as usize);
+            let pcl_out: Vec<PointXYZI> = cluster.it.collect().unwrap();
+            assert!(pcl_out.len() > parameters.min_points_per_cluster as usize);
         }
     }
 
@@ -539,11 +547,10 @@ mod tests {
         let cloud_size = cloud.len();
         let pointcloud = PointCloud::from_full_cloud(cloud.clone());
         let params = PassthroughFilterParameters::default();
-        let filtered = passthrough_filter(pointcloud, &params);
-        let out_size = filtered.buffer.len();
-        let back_to_vec = filtered.as_slice();
-        assert_eq!(out_size, cloud_size);
-        equal_list_with_linear_search(cloud.as_slice(), back_to_vec);
+        let filtered = passthrough_filter(pointcloud, params);
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), cloud_size);
+        equal_list_with_linear_search(cloud.as_slice(), out_pcl.as_slice());
 
         cloud.push(PointXYZI::new(0.0, 0.0, 0.0, 0.0));
         cloud.push(PointXYZI::new(0.0, 0.0, 0.0, 0.0));
@@ -556,12 +563,15 @@ mod tests {
         params.min = (-1.0, -1.0, -1.0);
         params.max = (1.0, 1.0, 1.0);
         params.min_dist = 0.05;
-        let filtered = passthrough_filter(pointcloud.clone(), &params);
-        assert_eq!(filtered.buffer.len(), cloud_size - 2);
+        let filtered = passthrough_filter(pointcloud, params.clone());
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), cloud_size - 2);
 
         params.invert_distance = true;
-        let filtered = passthrough_filter(pointcloud.clone(), &params);
-        assert_eq!(filtered.buffer.len(), 2);
+        let filtered =
+            passthrough_filter(PointCloud::from_full_cloud(cloud.clone()), params.clone());
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), 2);
 
         let cloud = vec![
             PointXYZI::new(0.5, 0.0, 0.0, 0.0),
@@ -573,8 +583,9 @@ mod tests {
         let mut params = PassthroughFilterParameters::default();
         let polygon = vec![(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)];
         params.polygon = Some(polygon);
-        let filtered = passthrough_filter(pointcloud.clone(), &params);
-        assert_eq!(filtered.buffer.len(), 3);
+        let filtered = passthrough_filter(pointcloud, params.clone());
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), 3);
     }
 
     #[test]
@@ -589,8 +600,9 @@ mod tests {
         params.enable_horizontal_fov = true;
         params.forward = (1.0, 0.0);
 
-        let filtered = passthrough_filter(pointcloud, &params);
-        assert_eq!(filtered.buffer.len(), 1);
+        let filtered = passthrough_filter(pointcloud, params.clone());
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), 1);
     }
 
     #[test]
@@ -608,8 +620,9 @@ mod tests {
             strategy: VoxelDownsampleStrategy::Average,
         };
 
-        let filtered = voxel_downsample_average(&pointcloud, params);
-        assert_eq!(filtered.buffer.len(), 1);
+        let filtered = voxel_downsample_average(pointcloud, params);
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), 1);
     }
 
     #[test]
@@ -627,8 +640,9 @@ mod tests {
             strategy: VoxelDownsampleStrategy::Median,
         };
 
-        let filtered = voxel_downsample_median(&pointcloud, params);
-        assert_eq!(filtered.buffer.len(), 1);
+        let filtered = voxel_downsample_median(pointcloud, params);
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), 1);
     }
 
     #[test]
@@ -645,8 +659,9 @@ mod tests {
             strategy: VoxelDownsampleStrategy::Center,
         };
 
-        let filtered = voxel_downsample_center(&pointcloud, params);
-        assert_eq!(filtered.buffer.len(), 4);
+        let filtered = voxel_downsample_center(pointcloud, params);
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), 4);
 
         // compress to one point
         let pointcloud_2 = PointCloud::from_full_cloud(vec![
@@ -663,8 +678,9 @@ mod tests {
             strategy: VoxelDownsampleStrategy::Center,
         };
 
-        let filtered_2 = voxel_downsample_center(&pointcloud_2, params_2);
-        assert_eq!(filtered_2.buffer.len(), 1);
+        let filtered_2 = voxel_downsample_center(pointcloud_2, params_2);
+        let out_pcl: Vec<PointXYZI> = filtered_2.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), 1);
     }
 
     #[test]
@@ -681,8 +697,9 @@ mod tests {
             strategy: VoxelDownsampleStrategy::Center,
         };
 
-        let filtered = voxel_downsample_center_par(&pointcloud, params);
-        assert_eq!(filtered.buffer.len(), 4);
+        let filtered = voxel_downsample_center_par(pointcloud, params);
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), 4);
 
         // compress to one point
         let pointcloud_2 = PointCloud::from_full_cloud(vec![
@@ -699,8 +716,9 @@ mod tests {
             strategy: VoxelDownsampleStrategy::Center,
         };
 
-        let filtered_2 = voxel_downsample_center_par(&pointcloud_2, params_2);
-        assert_eq!(filtered_2.buffer.len(), 1);
+        let filtered_2 = voxel_downsample_center_par(pointcloud_2, params_2);
+        let out_pcl: Vec<PointXYZI> = filtered_2.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), 1);
     }
 
     #[test]
@@ -716,10 +734,11 @@ mod tests {
         params.min_intensity = 1.0;
         params.max_intensity = 3.0;
 
-        let filtered = passthrough_filter(pointcloud, &params);
-        assert_eq!(filtered.buffer.len(), 3);
-        assert_eq!(filtered.buffer[0].intensity, 1.0);
-        assert_eq!(filtered.buffer[1].intensity, 2.0);
-        assert_eq!(filtered.buffer[2].intensity, 3.0);
+        let filtered = passthrough_filter(pointcloud, params);
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        assert_eq!(out_pcl.len(), 3);
+        assert_eq!(out_pcl[0].intensity, 1.0);
+        assert_eq!(out_pcl[1].intensity, 2.0);
+        assert_eq!(out_pcl[2].intensity, 3.0);
     }
 }

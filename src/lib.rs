@@ -13,28 +13,21 @@ mod cpu;
 #[cfg(feature = "cpu")]
 pub use crate::cpu::*;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
-pub struct Point {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub i: f32, // intensity or padding byte
-}
+use num_traits::{Float, Zero};
 
-impl PartialEq for Point {
-    fn eq(&self, other: &Self) -> bool {
-        (self.x - other.x).abs() < 0.0001
-            && (self.y - other.y).abs() < 0.0001
-            && (self.z - other.z).abs() < 0.0001
-            && (self.i - other.i).abs() < 0.0001
-    }
-}
+pub trait Point<T>: Zero + Clone + Copy + 'static + Sync + Send + PartialEq {
+    fn get_x(&self) -> T;
+    fn get_y(&self) -> T;
+    fn get_z(&self) -> T;
+    fn get_i(&self) -> T;
 
-impl Point {
-    pub fn new(x: f32, y: f32, z: f32, i: f32) -> Self {
-        Self { x, y, z, i }
-    }
+    fn set_x(&mut self, x: T);
+    fn set_y(&mut self, y: T);
+    fn set_z(&mut self, z: T);
+    fn set_i(&mut self, i: T);
+
+    fn with_xyzi(x: T, y: T, z: T, i: T) -> Self;
+    fn with_xyzif64(x: f64, y: f64, z: f64, i: f64) -> Self;
 }
 
 pub enum VoxelDownsampleStrategy {
@@ -43,30 +36,50 @@ pub enum VoxelDownsampleStrategy {
     Median,
 }
 
-#[derive(Debug, Clone)]
-pub struct PointCloud {
-    #[cfg(feature = "cpu")]
-    pub buffer: Vec<Point>,
-
-    #[cfg(feature = "cuda")]
-    pub buffer: CudaBuffer,
+impl Default for VoxelDownsampleStrategy {
+    fn default() -> Self {
+        Self::Median
+    }
 }
 
-impl PointCloud {
+#[derive(Debug, Clone)]
+pub struct PointCloud<T, U>
+where
+    U: Float + Into<f64>,
+    T: Point<U>,
+{
+    #[cfg(feature = "cpu")]
+    pub buffer: Vec<T>,
+
+    #[cfg(feature = "cuda")]
+    pub buffer: CudaBuffer<T, U>,
+
+    _phantom_t: std::marker::PhantomData<U>,
+}
+
+impl<T, U> PointCloud<T, U>
+where
+    U: Float + Into<f64>,
+    T: Point<U>,
+{
     #[cfg(feature = "cpu")]
     pub fn new(n: usize) -> Self {
         Self {
-            buffer: vec![Point::new(0.0, 0.0, 0.0, 0.0); n],
+            buffer: vec![T::zero(); n],
+            _phantom_t: std::marker::PhantomData,
         }
     }
 
     #[cfg(feature = "cpu")]
-    pub fn from_full_cloud(pointcloud: Vec<Point>) -> Self {
-        Self { buffer: pointcloud }
+    pub fn from_full_cloud(pointcloud: Vec<T>) -> Self {
+        Self {
+            buffer: pointcloud,
+            _phantom_t: std::marker::PhantomData,
+        }
     }
 
     #[cfg(feature = "cpu")]
-    pub fn as_slice(&self) -> &[Point] {
+    pub fn as_slice(&self) -> &[T] {
         &self.buffer
     }
 
@@ -96,40 +109,40 @@ impl PointCloud {
 #[derive(Debug)]
 
 pub struct PassthroughFilterParameters {
-    pub min: (f32, f32, f32),
-    pub max: (f32, f32, f32),
+    pub min: (f64, f64, f64),
+    pub max: (f64, f64, f64),
     pub invert_bounding_box: bool,
-    pub min_dist: f32,
-    pub max_dist: f32,
+    pub min_dist: f64,
+    pub max_dist: f64,
     pub invert_distance: bool,
-    pub rotation: (f32, f32, f32, f32),
-    pub translation: (f32, f32, f32),
-    pub fov_right: f32,
-    pub fov_left: f32,
-    pub forward: (f32, f32),
+    pub rotation: (f64, f64, f64, f64),
+    pub translation: (f64, f64, f64),
+    pub fov_right: f64,
+    pub fov_left: f64,
+    pub forward: (f64, f64),
     pub enable_horizontal_fov: bool,
 
     #[cfg(feature = "cuda")]
     pub polygon: Option<CudaBuffer>,
 
     #[cfg(feature = "cpu")]
-    pub polygon: Option<Vec<(f32, f32)>>,
+    pub polygon: Option<Vec<(f64, f64)>>,
 
     pub invert_polygon: bool,
     pub invert_fov: bool,
-    pub min_intensity: f32,
-    pub max_intensity: f32,
+    pub min_intensity: f64,
+    pub max_intensity: f64,
     pub invert_intensity: bool,
 }
 
 impl Default for PassthroughFilterParameters {
     fn default() -> Self {
         Self {
-            min: (f32::MIN, f32::MIN, f32::MIN),
-            max: (f32::MAX, f32::MAX, f32::MAX),
+            min: (f64::MIN, f64::MIN, f64::MIN),
+            max: (f64::MAX, f64::MAX, f64::MAX),
             invert_bounding_box: false,
             min_dist: 0.0,
-            max_dist: f32::MAX / 2.5,
+            max_dist: f64::MAX / 2.5,
             invert_distance: false,
             rotation: (0.0, 0.0, 0.0, 1.0),
             translation: (0.0, 0.0, 0.0),
@@ -140,22 +153,9 @@ impl Default for PassthroughFilterParameters {
             polygon: None,
             invert_polygon: false,
             invert_fov: false,
-            min_intensity: f32::MIN,
-            max_intensity: f32::MAX,
+            min_intensity: f64::MIN,
+            max_intensity: f64::MAX,
             invert_intensity: false,
         }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct Point2 {
-    pub x: f32,
-    pub y: f32,
-}
-
-impl Point2 {
-    pub fn new(x: f32, y: f32) -> Self {
-        Self { x, y }
     }
 }

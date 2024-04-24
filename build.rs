@@ -65,7 +65,7 @@ fn main() {
     if cpu_feature_enabled && cuda_feature_enabled {
         panic!("The features 'cpu' and 'cuda' cannot be enabled at the same time.");
     }
-    
+
     #[cfg(feature = "cuda")]
     link_cuda()
 }

@@ -35,7 +35,7 @@ fn voxel_downsample_center<T: Point<U>, U: Float + Into<f64>>(
     let mut hashes = rustc_hash::FxHashSet::default();
     let mut voxel_center = Vec::new();
 
-    for point in input.it.unwrap() {
+    for point in input.it {
         let hash: usize = hash_func_3d_points(&point, parameters.voxel_size);
         if !hashes.contains(&hash) {
             hashes.insert(hash);
@@ -61,7 +61,7 @@ pub fn voxel_downsample_center_par<T: Point<U>, U: Float + Into<f64>>(
     #[cfg(all(feature = "rayon", feature = "cpu"))]
     let it = input.buffer.par_iter();
     #[cfg(all(feature = "cpu", not(feature = "rayon")))]
-    let it = input.it.unwrap();
+    let it = input.it;
 
     let mut hashes = it
         .enumerate()
@@ -135,12 +135,12 @@ fn voxel_downsample_average<T: Point<U>, U: Float + Into<f64>>(
 #[cfg(all(feature = "cpu", not(feature = "rayon")))]
 #[inline(always)]
 fn hash_points<T: Point<U>, U: Float + Into<f64>>(
-    input: Box<dyn FallibleIterator<Item = T, Error = ConversionError>>,
+    input: Box<dyn Iterator<Item = T>>,
     voxel_size: f64,
 ) -> rustc_hash::FxHashMap<usize, Vec<T>> {
     let mut hashes = rustc_hash::FxHashMap::default();
 
-    for point in input.unwrap() {
+    for point in input {
         let hash = hash_func_3d_points(&point, voxel_size);
         if !hashes.contains_key(&hash) {
             hashes.insert(hash, Vec::new());
@@ -269,7 +269,7 @@ pub fn euclidean_cluster<T: Point<U>, U: Float + Into<f64>>(
     #[cfg(all(feature = "rayon", feature = "cpu"))]
     let it = cloud.as_slice().par_iter();
     #[cfg(all(feature = "cpu", not(feature = "rayon")))]
-    let it = cloud.it.unwrap();
+    let it = cloud.it;
 
     let points = it.collect::<Vec<T>>(); // TODO avoid this copy
 
@@ -437,7 +437,7 @@ pub fn passthrough_filter<T: Point<U>, U: Float + Into<f64>>(
     let it = input.buffer.into_par_iter();
 
     #[cfg(all(feature = "cpu", not(feature = "rayon")))]
-    let it = input.it.unwrap();
+    let it = input.it;
 
     let res = it.filter(move |point| {
         let p_t = transform_point(
@@ -535,7 +535,7 @@ mod tests {
         assert!(!clusters.is_empty());
 
         for cluster in clusters {
-            let pcl_out: Vec<PointXYZI> = cluster.it.collect().unwrap();
+            let pcl_out: Vec<PointXYZI> = cluster.it.collect();
             assert!(pcl_out.len() > parameters.min_points_per_cluster as usize);
         }
     }
@@ -548,7 +548,7 @@ mod tests {
         let pointcloud = PointCloud::from_full_cloud(cloud.clone());
         let params = PassthroughFilterParameters::default();
         let filtered = passthrough_filter(pointcloud, params);
-        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect();
         assert_eq!(out_pcl.len(), cloud_size);
         equal_list_with_linear_search(cloud.as_slice(), out_pcl.as_slice());
 
@@ -564,13 +564,13 @@ mod tests {
         params.max = (1.0, 1.0, 1.0);
         params.min_dist = 0.05;
         let filtered = passthrough_filter(pointcloud, params.clone());
-        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect();
         assert_eq!(out_pcl.len(), cloud_size - 2);
 
         params.invert_distance = true;
         let filtered =
             passthrough_filter(PointCloud::from_full_cloud(cloud.clone()), params.clone());
-        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect();
         assert_eq!(out_pcl.len(), 2);
 
         let cloud = vec![
@@ -584,7 +584,7 @@ mod tests {
         let polygon = vec![(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)];
         params.polygon = Some(polygon);
         let filtered = passthrough_filter(pointcloud, params.clone());
-        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect();
         assert_eq!(out_pcl.len(), 3);
     }
 
@@ -601,7 +601,7 @@ mod tests {
         params.forward = (1.0, 0.0);
 
         let filtered = passthrough_filter(pointcloud, params.clone());
-        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect();
         assert_eq!(out_pcl.len(), 1);
     }
 
@@ -621,7 +621,7 @@ mod tests {
         };
 
         let filtered = voxel_downsample_average(pointcloud, params);
-        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect();
         assert_eq!(out_pcl.len(), 1);
     }
 
@@ -641,7 +641,7 @@ mod tests {
         };
 
         let filtered = voxel_downsample_median(pointcloud, params);
-        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect();
         assert_eq!(out_pcl.len(), 1);
     }
 
@@ -660,7 +660,7 @@ mod tests {
         };
 
         let filtered = voxel_downsample_center(pointcloud, params);
-        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect();
         assert_eq!(out_pcl.len(), 4);
 
         // compress to one point
@@ -679,7 +679,7 @@ mod tests {
         };
 
         let filtered_2 = voxel_downsample_center(pointcloud_2, params_2);
-        let out_pcl: Vec<PointXYZI> = filtered_2.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered_2.it.collect();
         assert_eq!(out_pcl.len(), 1);
     }
 
@@ -698,7 +698,7 @@ mod tests {
         };
 
         let filtered = voxel_downsample_center_par(pointcloud, params);
-        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect();
         assert_eq!(out_pcl.len(), 4);
 
         // compress to one point
@@ -717,7 +717,7 @@ mod tests {
         };
 
         let filtered_2 = voxel_downsample_center_par(pointcloud_2, params_2);
-        let out_pcl: Vec<PointXYZI> = filtered_2.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered_2.it.collect();
         assert_eq!(out_pcl.len(), 1);
     }
 
@@ -735,7 +735,7 @@ mod tests {
         params.max_intensity = 3.0;
 
         let filtered = passthrough_filter(pointcloud, params);
-        let out_pcl: Vec<PointXYZI> = filtered.it.collect().unwrap();
+        let out_pcl: Vec<PointXYZI> = filtered.it.collect();
         assert_eq!(out_pcl.len(), 3);
         assert_eq!(out_pcl[0].intensity, 1.0);
         assert_eq!(out_pcl[1].intensity, 2.0);

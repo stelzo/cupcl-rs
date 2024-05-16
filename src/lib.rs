@@ -15,11 +15,6 @@ pub use crate::cpu::*;
 
 use num_traits::{Float, Zero};
 
-use fallible_iterator::FallibleIterator;
-
-// TODO create own error type, so ROS feature can be optional
-use ros_pointcloud2::ConversionError;
-
 pub trait Point<T>: Zero + Clone + Copy + Sync + Send + PartialEq + 'static {
     fn get_x(&self) -> T;
     fn get_y(&self) -> T;
@@ -55,7 +50,7 @@ where
     #[cfg(feature = "cpu")]
     pub buffer: Option<Vec<T>>,
 
-    pub it: Box<dyn FallibleIterator<Item = T, Error = ConversionError>>,
+    pub it: Box<dyn Iterator<Item = T>>,
 
     #[cfg(feature = "cuda")]
     pub buffer: CudaBuffer<T, U>,
@@ -72,9 +67,7 @@ where
     pub fn from_full_cloud(pointcloud: Vec<T>) -> Self {
         Self {
             buffer: None,
-            it: Box::new(ros_pointcloud2::fallible_iterator::convert(
-                pointcloud.into_iter().map(Ok),
-            )),
+            it: Box::new(pointcloud.into_iter()),
             _phantom_t: std::marker::PhantomData,
         }
     }
@@ -82,9 +75,7 @@ where
     pub fn from_iterable<I: IntoIterator<Item = T> + 'static>(iter: I) -> Self {
         Self {
             buffer: None,
-            it: Box::new(ros_pointcloud2::fallible_iterator::convert(
-                iter.into_iter().map(Ok),
-            )),
+            it: Box::new(iter.into_iter()),
             _phantom_t: std::marker::PhantomData,
         }
     }
@@ -92,19 +83,16 @@ where
     #[cfg(feature = "ros")]
     #[inline]
     pub fn from_ros_cloud<
-        I: ros_pointcloud2::FromBytes + 'static,
-        const SIZE: usize,
-        const DIM: usize,
-        const METADIM: usize,
-        C: ros_pointcloud2::PointConvertible<I, SIZE, DIM, METADIM> + 'static,
+        const N: usize,
+        C: ros_pointcloud2::PointConvertible<N>,
         F: Fn(C) -> T + 'static,
     >(
-        converter: ros_pointcloud2::Convert<I, SIZE, DIM, METADIM, C>,
+        iter: impl Iterator<Item = C> + 'static,
         conversion: F,
     ) -> Self {
         Self {
             buffer: None,
-            it: Box::new(converter.map(move |p: C| Ok(conversion(p)))),
+            it: Box::new(iter.map(conversion)),
             _phantom_t: std::marker::PhantomData,
         }
     }
@@ -140,6 +128,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ros_pointcloud2::points::PointXYZ;
 
     #[derive(pcl_derive::PointXYZ, Default, Debug, Clone, Copy, PartialEq)]
     struct MyPointXYZ {
@@ -149,8 +138,8 @@ mod tests {
     }
 
     // TODO macro
-    impl From<ros_pointcloud2::pcl_utils::PointXYZ> for MyPointXYZ {
-        fn from(p: ros_pointcloud2::pcl_utils::PointXYZ) -> Self {
+    impl From<PointXYZ> for MyPointXYZ {
+        fn from(p: PointXYZ) -> Self {
             Self {
                 x: p.x,
                 y: p.y,
@@ -162,35 +151,32 @@ mod tests {
     #[cfg(feature = "ros")]
     #[test]
     fn test_ros() {
-        use ros_pointcloud2::{pcl_utils::PointXYZ, ros_types::PointCloud2Msg, ConvertXYZ};
+        use ros_pointcloud2::prelude::*;
 
-        let mut cloud = Vec::<PointXYZ>::new();
-        cloud.push(PointXYZ {
-            x: 1.0,
-            y: 2.0,
-            z: 3.0,
-        });
-        cloud.push(PointXYZ {
-            x: 4.0,
-            y: 5.0,
-            z: 6.0,
-        });
+        let cloud = vec![
+            PointXYZ {
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+            },
+            PointXYZ {
+                x: 4.0,
+                y: 5.0,
+                z: 6.0,
+            },
+        ];
 
         // somewhere else
-        let convert = ConvertXYZ::try_from(cloud).unwrap();
-        let internal_msg: PointCloud2Msg = convert.try_into().unwrap();
-
-        // arriving over ROS
-        let convert: ConvertXYZ = ConvertXYZ::try_from(internal_msg).unwrap();
+        let internal_msg = PointCloud2Msg::try_from_vec(cloud).unwrap();
 
         // describe transformation to internal format
-        let mut pointcloud =
-            PointCloud::<MyPointXYZ, f32>::from_ros_cloud(convert, |p: PointXYZ| {
-                MyPointXYZ::from(p)
-            });
+        let mut pointcloud = PointCloud::<MyPointXYZ, f32>::from_ros_cloud(
+            internal_msg.try_into_iter().unwrap(),
+            |p: PointXYZ| MyPointXYZ::from(p),
+        );
 
         // work with pointcloud
-        let first_iter = pointcloud.it.next().unwrap().unwrap();
+        let first_iter = pointcloud.it.next().unwrap();
         assert_eq!(
             first_iter,
             MyPointXYZ {
@@ -200,7 +186,7 @@ mod tests {
             }
         );
 
-        let second_iter = pointcloud.it.next().unwrap().unwrap();
+        let second_iter = pointcloud.it.next().unwrap();
         assert_eq!(
             second_iter,
             MyPointXYZ {

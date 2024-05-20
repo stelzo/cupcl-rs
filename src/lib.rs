@@ -14,20 +14,73 @@ mod cpu;
 pub use crate::cpu::*;
 
 use num_traits::{Float, Zero};
+use ros_pointcloud2::points::PointXYZI;
 
-pub trait Point<T>: Zero + Clone + Copy + Sync + Send + PartialEq + 'static {
-    fn get_x(&self) -> T;
-    fn get_y(&self) -> T;
-    fn get_z(&self) -> T;
-    fn get_i(&self) -> T;
+pub trait Point: Default + Clone + Copy + Sync + Send + PartialEq + 'static {
+    fn get_x(&self) -> f32;
+    fn get_y(&self) -> f32;
+    fn get_z(&self) -> f32;
+    fn get_i(&self) -> f32;
 
-    fn set_x(&mut self, x: T);
-    fn set_y(&mut self, y: T);
-    fn set_z(&mut self, z: T);
-    fn set_i(&mut self, i: T);
+    fn set_x(&mut self, x: f32);
+    fn set_y(&mut self, y: f32);
+    fn set_z(&mut self, z: f32);
+    fn set_i(&mut self, i: f32);
 
-    fn with_xyzi(x: T, y: T, z: T, i: T) -> Self;
+    fn with_xyzi(x: f32, y: f32, z: f32, i: f32) -> Self;
     fn with_xyzif64(x: f64, y: f64, z: f64, i: f64) -> Self;
+}
+
+impl Point for PointXYZI {
+    fn get_x(&self) -> f32 {
+        self.x
+    }
+
+    fn get_y(&self) -> f32 {
+        self.y
+    }
+
+    fn get_z(&self) -> f32 {
+        self.z
+    }
+
+    fn get_i(&self) -> f32 {
+        self.intensity
+    }
+
+    fn set_x(&mut self, x: f32) {
+        self.x = x;
+    }
+
+    fn set_y(&mut self, y: f32) {
+        self.y = y;
+    }
+
+    fn set_z(&mut self, z: f32) {
+        self.z = z;
+    }
+
+    fn set_i(&mut self, i: f32) {
+        self.intensity = i;
+    }
+
+    fn with_xyzi(x: f32, y: f32, z: f32, i: f32) -> Self {
+        Self {
+            x,
+            y,
+            z,
+            intensity: i,
+        }
+    }
+
+    fn with_xyzif64(x: f64, y: f64, z: f64, i: f64) -> Self {
+        Self {
+            x: x as f32,
+            y: y as f32,
+            z: z as f32,
+            intensity: i as f32,
+        }
+    }
 }
 
 pub enum VoxelDownsampleStrategy {
@@ -42,64 +95,52 @@ impl Default for VoxelDownsampleStrategy {
     }
 }
 
-pub struct PointCloud<T, U>
-where
-    U: Float + Into<f64>,
-    T: Point<U>,
-{
+pub struct PointCloud {
     #[cfg(feature = "cpu")]
-    pub buffer: Option<Vec<T>>,
+    pub buffer: Option<Vec<PointXYZI>>,
 
-    pub it: Box<dyn Iterator<Item = T>>,
+    pub it: Option<Box<dyn Iterator<Item = PointXYZI>>>,
+
+    #[cfg(feature = "ros")]
+    pub ros_cloud: Option<ros_pointcloud2::PointCloud2Msg>,
 
     #[cfg(feature = "cuda")]
     pub buffer: CudaBuffer<T, U>,
-
-    _phantom_t: std::marker::PhantomData<U>,
 }
 
-impl<T, U> PointCloud<T, U>
-where
-    U: Float + Into<f64>,
-    T: Point<U> + 'static,
-{
+impl PointCloud{
     #[cfg(feature = "cpu")]
-    pub fn from_full_cloud(pointcloud: Vec<T>) -> Self {
+    pub fn from_full_cloud(pointcloud: Vec<PointXYZI>) -> Self {
         Self {
             buffer: None,
-            it: Box::new(pointcloud.into_iter()),
-            _phantom_t: std::marker::PhantomData,
+            it: Some(Box::new(pointcloud.into_iter())),
+            ros_cloud: None,
         }
     }
 
-    pub fn from_iterable<I: IntoIterator<Item = T> + 'static>(iter: I) -> Self {
+    pub fn from_iterable<I: IntoIterator<Item = PointXYZI> + 'static>(iter: I) -> Self {
         Self {
             buffer: None,
-            it: Box::new(iter.into_iter()),
-            _phantom_t: std::marker::PhantomData,
+            ros_cloud: None,
+            it: Some(Box::new(iter.into_iter())),
         }
     }
 
     #[cfg(feature = "ros")]
     #[inline]
-    pub fn from_ros_cloud<
-        const N: usize,
-        C: ros_pointcloud2::PointConvertible<N>,
-        F: Fn(C) -> T + 'static,
-    >(
-        iter: impl Iterator<Item = C> + 'static,
-        conversion: F,
+    pub fn from_ros_cloud(
+        cloud: ros_pointcloud2::PointCloud2Msg,
     ) -> Self {
         Self {
             buffer: None,
-            it: Box::new(iter.map(conversion)),
-            _phantom_t: std::marker::PhantomData,
+            it: None,
+            ros_cloud: Some(cloud),
         }
     }
 
     #[cfg(feature = "cpu")]
-    pub fn as_slice(&self) -> Option<&[T]> {
-        self.buffer.as_ref().map(|v| v.as_slice())
+    pub fn as_slice(&self) -> Option<&[PointXYZI]> {
+        self.buffer.as_ref().map(|v| v.as_slice()) // TODO not working when ROS is enabled or build from iterator
     }
 
     #[cfg(feature = "cuda")]
@@ -128,25 +169,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ros_pointcloud2::points::PointXYZ;
-
-    #[derive(pcl_derive::PointXYZ, Default, Debug, Clone, Copy, PartialEq)]
-    struct MyPointXYZ {
-        x: f32,
-        y: f32,
-        z: f32,
-    }
-
-    // TODO macro
-    impl From<PointXYZ> for MyPointXYZ {
-        fn from(p: PointXYZ) -> Self {
-            Self {
-                x: p.x,
-                y: p.y,
-                z: p.z,
-            }
-        }
-    }
 
     #[cfg(feature = "ros")]
     #[test]
@@ -170,31 +192,7 @@ mod tests {
         let internal_msg = PointCloud2Msg::try_from_vec(cloud).unwrap();
 
         // describe transformation to internal format
-        let mut pointcloud = PointCloud::<MyPointXYZ, f32>::from_ros_cloud(
-            internal_msg.try_into_iter().unwrap(),
-            |p: PointXYZ| MyPointXYZ::from(p),
-        );
-
-        // work with pointcloud
-        let first_iter = pointcloud.it.next().unwrap();
-        assert_eq!(
-            first_iter,
-            MyPointXYZ {
-                x: 1.0,
-                y: 2.0,
-                z: 3.0
-            }
-        );
-
-        let second_iter = pointcloud.it.next().unwrap();
-        assert_eq!(
-            second_iter,
-            MyPointXYZ {
-                x: 4.0,
-                y: 5.0,
-                z: 6.0
-            }
-        );
+        let mut pointcloud = PointCloud::from_ros_cloud(internal_msg);
     }
 }
 

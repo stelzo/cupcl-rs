@@ -15,7 +15,7 @@ dashmap = { version = "5.5.3", features = ["rayon"], optional = true }
 num-traits = "0.2.18"
 pcl-derive = { path = "pcl-derive" }
 fallible-iterator = "0.3.0"
-ros_pointcloud2 = { version = "0.5.0-rc.1", optional = true }
+ros_pointcloud2 = { version = "0.5.0-rc.2", optional = true, features = ["derive"]}
 
 [dev-dependencies]
 rand = "0.8"
@@ -33,7 +33,7 @@ cpu = [
     "dep:petal-clustering",
     "dep:petal-neighbors",
 ]
-rayon = ["dep:rayon", "dep:dashmap", "dep:dashmap"]
+rayon = ["dep:rayon", "dep:dashmap", "dep:dashmap", "ros_pointcloud2/rayon"]
 ros = ["dep:ros_pointcloud2"]
 
-default = ["cpu", "ros"]
+default = ["cpu", "ros", "rayon"] # TODO ros should be optional 

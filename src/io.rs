@@ -24,7 +24,7 @@ fn voxel() {
     assert_eq!(filtered.buffer.n, 3440);
 }*/
 
-pub fn equal_list_with_linear_search<T: Point<U>, U>(lhs: &[T], rhs: &[T]) {
+pub fn equal_list_with_linear_search(lhs: &[PointXYZI], rhs: &[PointXYZI]) {
     assert_eq!(lhs.len(), rhs.len());
     for p in lhs {
         assert!(rhs.contains(p));
@@ -51,27 +51,27 @@ pub fn read_pcl_file(path: String) -> Vec<PCDPoint> {
     points
 }
 
-pub fn read_pcl<T: Point<U>, U: Zero + Into<f64>>(path: String) -> Vec<T> {
+pub fn read_pcl(path: String) -> Vec<PointXYZI> {
     let points = read_pcl_file(path);
     points
         .iter()
-        .map(|p: &PCDPoint| T::with_xyzif64(p.x.into(), p.y.into(), p.z.into(), U::zero().into()))
+        .map(|p: &PCDPoint| PointXYZI::new(p.x as f32, p.y as f32, p.z as f32, 0.0))
         .collect()
 }
 
-pub fn generate_random_pointcloud<T: Point<U>, U: Zero + Into<f64>>(
+pub fn generate_random_pointcloud(
     num_points: usize,
     min: f64,
     max: f64,
-) -> Vec<T> {
+) -> Vec<PointXYZI> {
     let mut rng = rand::thread_rng();
     let mut pointcloud = Vec::with_capacity(num_points);
     for _ in 0..num_points {
-        let point = T::with_xyzif64(
-            rng.gen_range(min..max).into(),
-            rng.gen_range(min..max).into(),
-            rng.gen_range(min..max).into(),
-            U::zero().into(),
+        let point = PointXYZI::new(
+            rng.gen_range(min..max) as f32,
+            rng.gen_range(min..max) as f32,
+            rng.gen_range(min..max) as f32,
+            0.0,
         );
         pointcloud.push(point);
     }
@@ -81,23 +81,17 @@ pub fn generate_random_pointcloud<T: Point<U>, U: Zero + Into<f64>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[derive(pcl_derive::PointXYZ, Debug, Clone, Copy, PartialEq, Default)]
-    struct PointXYZ {
-        x: f64,
-        y: f64,
-        z: f64,
-    }
+    use ros_pointcloud2::points::PointXYZI;
 
     #[test]
     fn read_pcl_test() {
-        let points: Vec<PointXYZ> = read_pcl("test_files/cluster_sample.pcd".to_string());
+        let points: Vec<PointXYZI> = read_pcl("test_files/cluster_sample.pcd".to_string());
         assert!(points.len() > 170000);
     }
 
     #[test]
     fn generate_random_pointcloud_test() {
-        let input: Vec<PointXYZ> = generate_random_pointcloud(100, 0.0, 1.0);
+        let input: Vec<PointXYZI> = generate_random_pointcloud(100, 0.0, 1.0);
         let input_n = input.len();
         assert_eq!(input_n, 100);
     }

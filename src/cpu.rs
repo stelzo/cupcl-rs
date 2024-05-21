@@ -59,19 +59,19 @@ pub fn voxel_downsample_center_par(
     input: PointCloud,
     parameters: VoxelDownsampleParameters,
 ) -> PointCloud {
-    #[cfg(all(not(feature="ros"), feature = "rayon", feature = "cpu"))]
+    #[cfg(all(not(feature = "ros"), feature = "rayon", feature = "cpu"))]
     let it = input.buffer.par_iter();
-    #[cfg(all(not(feature="ros"), feature = "cpu", not(feature = "rayon")))]
+    #[cfg(all(not(feature = "ros"), feature = "cpu", not(feature = "rayon")))]
     let it = input.it.unwrap(); // TODO sure only be made with it in this case?
 
-    #[cfg(all(feature="ros", feature = "cpu", not(feature = "rayon")))]
+    #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
     let it = input.ros_cloud.unwrap().try_into_iter().unwrap(); // TODO handle error
-    #[cfg(all(feature="ros", feature = "cpu", feature = "rayon"))]
+    #[cfg(all(feature = "ros", feature = "cpu", feature = "rayon"))]
     let it = input.ros_cloud.unwrap().try_into_par_iter().unwrap();
 
     let mut hashes = it
-    .map(|point: PointXYZI| {
-        return (hash_func_3d_points(&point, parameters.voxel_size), point);
+        .map(|point: PointXYZI| {
+            return (hash_func_3d_points(&point, parameters.voxel_size), point);
         })
         .collect::<Vec<(usize, PointXYZI)>>();
 
@@ -104,9 +104,9 @@ fn voxel_downsample_average(
     input: PointCloud,
     parameters: VoxelDownsampleParameters,
 ) -> PointCloud {
-    #[cfg(all(feature="ros", feature = "cpu", not(feature = "rayon")))]
+    #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
     let it = input.ros_cloud.unwrap().try_into_iter().unwrap(); // TODO handle error
-    #[cfg(all(feature="ros", feature = "cpu", feature = "rayon"))]
+    #[cfg(all(feature = "ros", feature = "cpu", feature = "rayon"))]
     let it = input.ros_cloud.unwrap().try_into_par_iter().unwrap();
 
     let hashes = dashmap::DashMap::new();
@@ -132,14 +132,17 @@ fn voxel_downsample_average(
             let bucket = bucket_ref.1;
             #[cfg(all(feature = "rayon", feature = "cpu"))]
             let bucket = bucket_ref;
-            let voxel_average = bucket.iter().fold(PointXYZI::default(), |acc: PointXYZI, point| {
-                PointXYZI::new(
-                    acc.get_x() + point.get_x(),
-                    acc.get_y() + point.get_y(),
-                    acc.get_z() + point.get_z(),
-                    acc.get_i() + point.get_i(),
-                )
-            });
+            let voxel_average =
+                bucket
+                    .iter()
+                    .fold(PointXYZI::default(), |acc: PointXYZI, point| {
+                        PointXYZI::new(
+                            acc.get_x() + point.get_x(),
+                            acc.get_y() + point.get_y(),
+                            acc.get_z() + point.get_z(),
+                            acc.get_i() + point.get_i(),
+                        )
+                    });
 
             let x: f64 = voxel_average.get_x() as f64 / bucket.len() as f64;
             let y: f64 = voxel_average.get_y() as f64 / bucket.len() as f64;
@@ -176,10 +179,7 @@ fn hash_points<T: Point<U>, U: Float + Into<f64>>(
 
 #[cfg(all(feature = "rayon", feature = "cpu"))]
 #[inline]
-fn hash_points<T: Point>(
-    input: &Vec<T>,
-    voxel_size: f64,
-) -> dashmap::DashMap<usize, Vec<T>> {
+fn hash_points<T: Point>(input: &Vec<T>, voxel_size: f64) -> dashmap::DashMap<usize, Vec<T>> {
     let hashes = dashmap::DashMap::new();
 
     input.par_iter().for_each(|point| {
@@ -196,13 +196,10 @@ fn hash_points<T: Point>(
     hashes
 }
 
-fn voxel_downsample_median(
-    input: PointCloud,
-    parameters: VoxelDownsampleParameters,
-) -> PointCloud {
-    #[cfg(all(feature="ros", feature = "cpu", not(feature = "rayon")))]
+fn voxel_downsample_median(input: PointCloud, parameters: VoxelDownsampleParameters) -> PointCloud {
+    #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
     let it = input.ros_cloud.unwrap().try_into_iter().unwrap(); // TODO handle error
-    #[cfg(all(feature="ros", feature = "cpu", feature = "rayon"))]
+    #[cfg(all(feature = "ros", feature = "cpu", feature = "rayon"))]
     let it = input.ros_cloud.unwrap().try_into_par_iter().unwrap();
 
     let hashes = dashmap::DashMap::new();
@@ -263,10 +260,7 @@ fn voxel_downsample_median(
     PointCloud::from_full_cloud(out)
 }
 
-pub fn voxel_downsample(
-    input: PointCloud,
-    parameters: VoxelDownsampleParameters,
-) -> PointCloud {
+pub fn voxel_downsample(input: PointCloud, parameters: VoxelDownsampleParameters) -> PointCloud {
     match parameters.strategy {
         VoxelDownsampleStrategy::Center => todo!(), //voxel_downsample_center(input, parameters),
         VoxelDownsampleStrategy::Average => voxel_downsample_average(input, parameters),
@@ -301,37 +295,36 @@ pub fn euclidean_cluster(
         None => {}
     };
 
-    #[cfg(all(feature="ros", feature = "cpu"))]
+    #[cfg(all(feature = "ros", feature = "cpu"))]
     let points: Vec<PointXYZI> = cloud.ros_cloud.unwrap().try_into_vec().unwrap();
 
-    #[cfg(all(feature="ros", feature = "cpu", not(feature = "rayon")))]
+    #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
     let it = points.iter();
-    #[cfg(all(feature="ros", feature = "cpu", feature = "rayon"))]
+    #[cfg(all(feature = "ros", feature = "cpu", feature = "rayon"))]
     let it = points.par_iter();
-    
-    #[cfg(all(not(feature="ros"), feature = "cpu", feature = "rayon"))]
+
+    #[cfg(all(not(feature = "ros"), feature = "cpu", feature = "rayon"))]
     let it = cloud.as_slice().par_iter();
 
-    #[cfg(all(not(feature="ros"), feature = "cpu", not(feature = "rayon")))]
+    #[cfg(all(not(feature = "ros"), feature = "cpu", not(feature = "rayon")))]
     let it = cloud.it;
 
-    #[cfg(all(not(feature="ros"), feature = "rayon", feature = "cpu"))]
+    #[cfg(all(not(feature = "ros"), feature = "rayon", feature = "cpu"))]
     let it = cloud.as_slice().par_iter();
-    #[cfg(all(not(feature="ros"), feature = "cpu", not(feature = "rayon")))]
+    #[cfg(all(not(feature = "ros"), feature = "cpu", not(feature = "rayon")))]
     let it = cloud.it;
 
     let data: ndarray::ArrayBase<ndarray::OwnedRepr<f64>, _> = ndarray::ArrayBase::from_shape_vec(
         (points.len(), 3),
-        it
-            .map(|point| {
-                vec![
-                    point.get_x().into(),
-                    point.get_y().into(),
-                    point.get_z().into(),
-                ]
-            })
-            .flatten()
-            .collect(),
+        it.map(|point| {
+            vec![
+                point.get_x().into(),
+                point.get_y().into(),
+                point.get_z().into(),
+            ]
+        })
+        .flatten()
+        .collect(),
     )
     .unwrap();
 
@@ -477,18 +470,18 @@ fn point_inside_polygon_winding_number<U: Float>(
 }
 
 pub fn passthrough_filter(
-    input: PointCloud,
+    input: PointCloud2Msg,
     params: PassthroughFilterParameters,
-) -> PointCloud {
-    #[cfg(all(feature="ros", feature = "cpu", not(feature = "rayon")))]
-    let it = input.ros_cloud.unwrap().try_into_iter().unwrap(); // TODO handle error
-    #[cfg(all(feature="ros", feature = "cpu", feature = "rayon"))]
-    let it = input.ros_cloud.unwrap().try_into_par_iter().unwrap();
+) -> PointCloud2Msg {
+    #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
+    let it = input.try_into_iter().unwrap(); // TODO handle error
+    #[cfg(all(feature = "ros", feature = "cpu", feature = "rayon"))]
+    let it = input.try_into_par_iter().unwrap();
 
-    #[cfg(all(not(feature="ros"), feature = "rayon", feature = "cpu"))]
+    #[cfg(all(not(feature = "ros"), feature = "rayon", feature = "cpu"))]
     let it = input.buffer.into_par_iter();
 
-    #[cfg(all(not(feature="ros"), feature = "cpu", not(feature = "rayon")))]
+    #[cfg(all(not(feature = "ros"), feature = "cpu", not(feature = "rayon")))]
     let it = input.it;
 
     let res = it.filter(move |point: &PointXYZI| {
@@ -546,7 +539,7 @@ pub fn passthrough_filter(
             && is_inside_polygon
     });
 
-    PointCloud::from_ros_cloud(ros_pointcloud2::PointCloud2Msg::try_from_par_iter(res).unwrap())
+    ros_pointcloud2::PointCloud2Msg::try_from_par_iter(res).unwrap()
 }
 
 #[cfg(test)]
@@ -715,7 +708,6 @@ mod tests {
         let out_pcl: Vec<PointXYZI> = filtered_2.it.collect();
         assert_eq!(out_pcl.len(), 1);
     }*/
-
     #[test]
     fn voxel_downsample_center_par_test() {
         let pointcloud = PointCloud::from_full_cloud(vec![

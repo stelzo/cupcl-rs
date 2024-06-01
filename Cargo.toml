@@ -14,7 +14,6 @@ petal-neighbors = { version = "0.10.0", optional = true }
 dashmap = { version = "5.5.3", features = ["rayon"], optional = true }
 num-traits = "0.2.18"
 pcl-derive = { path = "pcl-derive" }
-fallible-iterator = "0.3.0"
 ros_pointcloud2 = { version = "0.5.0-rc.3", optional = true, features = ["derive"]}
 
 [dev-dependencies]

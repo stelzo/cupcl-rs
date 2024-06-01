@@ -108,7 +108,7 @@ pub struct PointCloud {
     pub buffer: CudaBuffer<T, U>,
 }
 
-impl PointCloud{
+impl PointCloud {
     #[cfg(feature = "cpu")]
     pub fn from_full_cloud(pointcloud: Vec<PointXYZI>) -> Self {
         Self {
@@ -128,9 +128,7 @@ impl PointCloud{
 
     #[cfg(feature = "ros")]
     #[inline]
-    pub fn from_ros_cloud(
-        cloud: ros_pointcloud2::PointCloud2Msg,
-    ) -> Self {
+    pub fn from_ros_cloud(cloud: ros_pointcloud2::PointCloud2Msg) -> Self {
         Self {
             buffer: None,
             it: None,

@@ -59,11 +59,7 @@ pub fn read_pcl(path: String) -> Vec<PointXYZI> {
         .collect()
 }
 
-pub fn generate_random_pointcloud(
-    num_points: usize,
-    min: f64,
-    max: f64,
-) -> Vec<PointXYZI> {
+pub fn generate_random_pointcloud(num_points: usize, min: f64, max: f64) -> Vec<PointXYZI> {
     let mut rng = rand::thread_rng();
     let mut pointcloud = Vec::with_capacity(num_points);
     for _ in 0..num_points {

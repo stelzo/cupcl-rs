@@ -65,7 +65,7 @@ pub fn voxel_downsample_center_par(
     let it = input.it.unwrap(); // TODO sure only be made with it in this case?
 
     #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
-    let it = input.ros_cloud.unwrap().try_into_iter().unwrap(); // TODO handle error
+    let it = input.ros_cloud.unwrap().try_into_vec().unwrap().into_iter(); // TODO handle error
     #[cfg(all(feature = "ros", feature = "cpu", feature = "rayon"))]
     let it = input.ros_cloud.unwrap().try_into_par_iter().unwrap();
 
@@ -105,11 +105,14 @@ fn voxel_downsample_average(
     parameters: VoxelDownsampleParameters,
 ) -> PointCloud {
     #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
-    let it = input.ros_cloud.unwrap().try_into_iter().unwrap(); // TODO handle error
+    let it = input.ros_cloud.unwrap().try_into_vec().unwrap().into_iter(); // TODO handle error
     #[cfg(all(feature = "ros", feature = "cpu", feature = "rayon"))]
     let it = input.ros_cloud.unwrap().try_into_par_iter().unwrap();
 
+    #[cfg(feature = "rayon")]
     let hashes = dashmap::DashMap::new();
+    #[cfg(not(feature = "rayon"))]
+    let mut hashes = rustc_hash::FxHashMap::default();
     it.for_each(|point: PointXYZI| {
         let hash = hash_func_3d_points(&point, parameters.voxel_size);
         if !hashes.contains_key(&hash) {
@@ -157,7 +160,7 @@ fn voxel_downsample_average(
 
 #[cfg(all(feature = "cpu", not(feature = "rayon")))]
 #[inline(always)]
-fn hash_points<T: Point<U>, U: Float + Into<f64>>(
+fn hash_points<T: Point, U: Float + Into<f64>>(
     input: Box<dyn Iterator<Item = T>>,
     voxel_size: f64,
 ) -> rustc_hash::FxHashMap<usize, Vec<T>> {
@@ -198,11 +201,14 @@ fn hash_points<T: Point>(input: &Vec<T>, voxel_size: f64) -> dashmap::DashMap<us
 
 fn voxel_downsample_median(input: PointCloud, parameters: VoxelDownsampleParameters) -> PointCloud {
     #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
-    let it = input.ros_cloud.unwrap().try_into_iter().unwrap(); // TODO handle error
+    let it = input.ros_cloud.unwrap().try_into_vec().unwrap().into_iter(); // TODO handle error
     #[cfg(all(feature = "ros", feature = "cpu", feature = "rayon"))]
     let it = input.ros_cloud.unwrap().try_into_par_iter().unwrap();
 
+    #[cfg(feature = "rayon")]
     let hashes = dashmap::DashMap::new();
+    #[cfg(not(feature = "rayon"))]
+    let mut hashes = rustc_hash::FxHashMap::default();
     it.for_each(|point: PointXYZI| {
         let hash = hash_func_3d_points(&point, parameters.voxel_size);
         if !hashes.contains_key(&hash) {
@@ -474,7 +480,7 @@ pub fn passthrough_filter(
     params: PassthroughFilterParameters,
 ) -> PointCloud2Msg {
     #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
-    let it = input.try_into_iter().unwrap(); // TODO handle error
+    let it = input.try_into_vec().unwrap().into_iter(); // TODO handle error
     #[cfg(all(feature = "ros", feature = "cpu", feature = "rayon"))]
     let it = input.try_into_par_iter().unwrap();
 
@@ -539,7 +545,14 @@ pub fn passthrough_filter(
             && is_inside_polygon
     });
 
-    ros_pointcloud2::PointCloud2Msg::try_from_par_iter(res).unwrap()
+    #[cfg(feature = "rayon")]
+    {
+        ros_pointcloud2::PointCloud2Msg::try_from_par_iter(res).unwrap()
+    }
+    #[cfg(not(feature = "rayon"))]
+    {
+        ros_pointcloud2::PointCloud2Msg::try_from_vec(res.collect()).unwrap()
+    }
 }
 
 #[cfg(test)]

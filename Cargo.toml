@@ -36,4 +36,4 @@ cpu = [
 rayon = ["dep:rayon", "dep:dashmap", "dep:dashmap", "ros_pointcloud2/rayon"]
 ros = ["dep:ros_pointcloud2"]
 
-default = ["cpu", "ros", "rayon"] # TODO ros should be optional 
+default = ["cpu", "ros"] # TODO ros should be optional 

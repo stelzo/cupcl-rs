@@ -480,7 +480,7 @@ pub fn passthrough_filter(
     params: PassthroughFilterParameters,
 ) -> PointCloud2Msg {
     #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
-    let it = input.try_into_vec().unwrap().into_iter(); // TODO handle error
+    let it = input.try_into_iter().unwrap(); // TODO handle error
     #[cfg(all(feature = "ros", feature = "cpu", feature = "rayon"))]
     let it = input.try_into_par_iter().unwrap();
 
@@ -551,7 +551,7 @@ pub fn passthrough_filter(
     }
     #[cfg(not(feature = "rayon"))]
     {
-        ros_pointcloud2::PointCloud2Msg::try_from_vec(res.collect()).unwrap()
+        ros_pointcloud2::PointCloud2Msg::try_from_iter(res).unwrap()
     }
 }
 

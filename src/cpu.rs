@@ -4,7 +4,7 @@ use petal_clustering::Fit;
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
-use ros_pointcloud2::{points::PointXYZI, PointCloud2Msg};
+use ros_pointcloud2::{points::PointXYZ, PointCloud2Msg};
 
 pub struct VoxelDownsampleParameters {
     pub voxel_size: f64,
@@ -70,10 +70,10 @@ pub fn voxel_downsample_center_par(
     let it = input.ros_cloud.unwrap().try_into_par_iter().unwrap();
 
     let mut hashes = it
-        .map(|point: PointXYZI| {
+        .map(|point: PointXYZ| {
             return (hash_func_3d_points(&point, parameters.voxel_size), point);
         })
-        .collect::<Vec<(usize, PointXYZI)>>();
+        .collect::<Vec<(usize, PointXYZ)>>();
 
     #[cfg(all(feature = "rayon", feature = "cpu"))]
     hashes.par_sort_unstable_by(|(hash1, _), (hash2, _)| hash1.cmp(&hash2));
@@ -88,12 +88,12 @@ pub fn voxel_downsample_center_par(
     #[cfg(all(feature = "cpu", not(feature = "rayon")))]
     let it = hashes.iter();
 
-    let centers: Vec<PointXYZI> = it
+    let centers: Vec<PointXYZ> = it
         .map(|(_, p)| {
             let x: f64 = (p.get_x() as f64 / parameters.voxel_size).round() * parameters.voxel_size;
             let y: f64 = (p.get_y() as f64 / parameters.voxel_size).round() * parameters.voxel_size;
             let z: f64 = (p.get_z() as f64 / parameters.voxel_size).round() * parameters.voxel_size;
-            PointXYZI::new(x as f32, y as f32, z as f32, 0.0)
+            PointXYZ::new(x as f32, y as f32, z as f32)
         })
         .collect();
 
@@ -113,7 +113,7 @@ fn voxel_downsample_average(
     let hashes = dashmap::DashMap::new();
     #[cfg(not(feature = "rayon"))]
     let mut hashes = rustc_hash::FxHashMap::default();
-    it.for_each(|point: PointXYZI| {
+    it.for_each(|point: PointXYZ| {
         let hash = hash_func_3d_points(&point, parameters.voxel_size);
         if !hashes.contains_key(&hash) {
             hashes.insert(hash, Vec::new());
@@ -138,12 +138,11 @@ fn voxel_downsample_average(
             let voxel_average =
                 bucket
                     .iter()
-                    .fold(PointXYZI::default(), |acc: PointXYZI, point| {
-                        PointXYZI::new(
+                    .fold(PointXYZ::default(), |acc: PointXYZ, point| {
+                        PointXYZ::new(
                             acc.get_x() + point.get_x(),
                             acc.get_y() + point.get_y(),
                             acc.get_z() + point.get_z(),
-                            acc.get_i() + point.get_i(),
                         )
                     });
 
@@ -151,9 +150,9 @@ fn voxel_downsample_average(
             let y: f64 = voxel_average.get_y() as f64 / bucket.len() as f64;
             let z: f64 = voxel_average.get_z() as f64 / bucket.len() as f64;
             let i: f64 = voxel_average.get_i() as f64 / bucket.len() as f64;
-            PointXYZI::new(x as f32, y as f32, z as f32, i as f32)
+            PointXYZ::new(x as f32, y as f32, z as f32)
         })
-        .collect::<Vec<PointXYZI>>();
+        .collect::<Vec<PointXYZ>>();
 
     PointCloud::from_full_cloud(out)
 }
@@ -209,7 +208,7 @@ fn voxel_downsample_median(input: PointCloud, parameters: VoxelDownsampleParamet
     let hashes = dashmap::DashMap::new();
     #[cfg(not(feature = "rayon"))]
     let mut hashes = rustc_hash::FxHashMap::default();
-    it.for_each(|point: PointXYZI| {
+    it.for_each(|point: PointXYZ| {
         let hash = hash_func_3d_points(&point, parameters.voxel_size);
         if !hashes.contains_key(&hash) {
             hashes.insert(hash, Vec::new());
@@ -231,24 +230,22 @@ fn voxel_downsample_median(input: PointCloud, parameters: VoxelDownsampleParamet
             let bucket = bucket_ref.1;
             #[cfg(all(feature = "rayon", feature = "cpu"))]
             let bucket = bucket_ref;
-            let voxel_average = bucket.iter().fold(PointXYZI::default(), |acc, point| {
-                PointXYZI::new(
+            let voxel_average = bucket.iter().fold(PointXYZ::default(), |acc, point| {
+                PointXYZ::new(
                     acc.get_x() + point.get_x(),
                     acc.get_y() + point.get_y(),
                     acc.get_z() + point.get_z(),
-                    acc.get_i() + point.get_i(),
                 )
             });
 
-            let xyzi = PointXYZI::new(
+            let xyzi = PointXYZ::new(
                 voxel_average.get_x() as f32 / bucket.len() as f32,
                 voxel_average.get_y() as f32 / bucket.len() as f32,
                 voxel_average.get_z() as f32 / bucket.len() as f32,
-                voxel_average.get_i() as f32 / bucket.len() as f32,
             );
 
             let mut min_dist = f64::MAX;
-            let mut closest_point = PointXYZI::default();
+            let mut closest_point = PointXYZ::default();
             for point in bucket.iter() {
                 let dist = (point.get_x() as f64 - xyzi.get_x() as f64).powi(2)
                     + (point.get_y() as f64 - xyzi.get_y() as f64).powi(2)
@@ -261,7 +258,7 @@ fn voxel_downsample_median(input: PointCloud, parameters: VoxelDownsampleParamet
 
             closest_point
         })
-        .collect::<Vec<PointXYZI>>();
+        .collect::<Vec<PointXYZ>>();
 
     PointCloud::from_full_cloud(out)
 }
@@ -302,7 +299,7 @@ pub fn euclidean_cluster(
     };
 
     #[cfg(all(feature = "ros", feature = "cpu"))]
-    let points: Vec<PointXYZI> = cloud.ros_cloud.unwrap().try_into_vec().unwrap();
+    let points: Vec<PointXYZ> = cloud.ros_cloud.unwrap().try_into_vec().unwrap();
 
     #[cfg(all(feature = "ros", feature = "cpu", not(feature = "rayon")))]
     let it = points.iter();
@@ -490,7 +487,7 @@ pub fn passthrough_filter(
     #[cfg(all(not(feature = "ros"), feature = "cpu", not(feature = "rayon")))]
     let it = input.it;
 
-    let res = it.filter(move |point: &PointXYZI| {
+    let res = it.filter(move |point: &PointXYZ| {
         let p_t = transform_point(
             (
                 point.get_x().into(),
@@ -755,25 +752,25 @@ mod tests {
         };
 
         let filtered_2 = voxel_downsample_center_par(pointcloud_2, params_2);
-        let out_pcl: Vec<PointXYZI> = filtered_2.it.unwrap().collect();
+        let out_pcl: Vec<PointXYZ> = filtered_2.it.unwrap().collect();
         assert_eq!(out_pcl.len(), 1);
     }
 
     #[test]
     fn intensity_passthrough() {
         let pointcloud = PointCloud::from_full_cloud(vec![
-            PointXYZI::new(1.0, 0.0, 0.0, 0.0),
-            PointXYZI::new(1.0, 0.0, 0.0, 1.0),
-            PointXYZI::new(1.0, 0.0, 0.0, 2.0),
-            PointXYZI::new(1.0, 0.0, 0.0, 3.0),
-            PointXYZI::new(1.0, 0.0, 0.0, 4.0),
+            PointXYZ::new(1.0, 0.0, 0.0),
+            PointXYZ::new(1.0, 0.0, 0.0),
+            PointXYZ::new(1.0, 0.0, 0.0),
+            PointXYZ::new(1.0, 0.0, 0.0),
+            PointXYZ::new(1.0, 0.0, 0.0),
         ]);
         let mut params = PassthroughFilterParameters::default();
         params.min_intensity = 1.0;
         params.max_intensity = 3.0;
 
         let filtered = passthrough_filter(pointcloud, params);
-        let out_pcl: Vec<PointXYZI> = filtered.it.unwrap().collect();
+        let out_pcl: Vec<PointXYZ> = filtered.it.unwrap().collect();
         assert_eq!(out_pcl.len(), 3);
         assert_eq!(out_pcl[0].intensity, 1.0);
         assert_eq!(out_pcl[1].intensity, 2.0);

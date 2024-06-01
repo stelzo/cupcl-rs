@@ -14,7 +14,7 @@ mod cpu;
 pub use crate::cpu::*;
 
 use num_traits::{Float, Zero};
-use ros_pointcloud2::points::PointXYZI;
+use ros_pointcloud2::points::PointXYZ;
 
 pub trait Point: Default + Clone + Copy + Sync + Send + PartialEq + 'static {
     fn get_x(&self) -> f32;
@@ -31,7 +31,7 @@ pub trait Point: Default + Clone + Copy + Sync + Send + PartialEq + 'static {
     fn with_xyzif64(x: f64, y: f64, z: f64, i: f64) -> Self;
 }
 
-impl Point for PointXYZI {
+impl Point for PointXYZ {
     fn get_x(&self) -> f32 {
         self.x
     }
@@ -45,7 +45,7 @@ impl Point for PointXYZI {
     }
 
     fn get_i(&self) -> f32 {
-        self.intensity
+        0.0
     }
 
     fn set_x(&mut self, x: f32) {
@@ -61,7 +61,6 @@ impl Point for PointXYZI {
     }
 
     fn set_i(&mut self, i: f32) {
-        self.intensity = i;
     }
 
     fn with_xyzi(x: f32, y: f32, z: f32, i: f32) -> Self {
@@ -69,7 +68,6 @@ impl Point for PointXYZI {
             x,
             y,
             z,
-            intensity: i,
         }
     }
 
@@ -78,7 +76,6 @@ impl Point for PointXYZI {
             x: x as f32,
             y: y as f32,
             z: z as f32,
-            intensity: i as f32,
         }
     }
 }
@@ -97,9 +94,9 @@ impl Default for VoxelDownsampleStrategy {
 
 pub struct PointCloud {
     #[cfg(feature = "cpu")]
-    pub buffer: Option<Vec<PointXYZI>>,
+    pub buffer: Option<Vec<PointXYZ>>,
 
-    pub it: Option<Box<dyn Iterator<Item = PointXYZI>>>,
+    pub it: Option<Box<dyn Iterator<Item = PointXYZ>>>,
 
     #[cfg(feature = "ros")]
     pub ros_cloud: Option<ros_pointcloud2::PointCloud2Msg>,
@@ -110,7 +107,7 @@ pub struct PointCloud {
 
 impl PointCloud {
     #[cfg(feature = "cpu")]
-    pub fn from_full_cloud(pointcloud: Vec<PointXYZI>) -> Self {
+    pub fn from_full_cloud(pointcloud: Vec<PointXYZ>) -> Self {
         Self {
             buffer: None,
             it: Some(Box::new(pointcloud.into_iter())),
@@ -118,7 +115,7 @@ impl PointCloud {
         }
     }
 
-    pub fn from_iterable<I: IntoIterator<Item = PointXYZI> + 'static>(iter: I) -> Self {
+    pub fn from_iterable<I: IntoIterator<Item = PointXYZ> + 'static>(iter: I) -> Self {
         Self {
             buffer: None,
             ros_cloud: None,
@@ -137,7 +134,7 @@ impl PointCloud {
     }
 
     #[cfg(feature = "cpu")]
-    pub fn as_slice(&self) -> Option<&[PointXYZI]> {
+    pub fn as_slice(&self) -> Option<&[PointXYZ]> {
         self.buffer.as_ref().map(|v| v.as_slice()) // TODO not working when ROS is enabled or build from iterator
     }
 
